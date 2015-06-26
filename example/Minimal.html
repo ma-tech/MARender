@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<title>Minimal MARender</title>
+<meta charset="utf-8">
+</head>
+
+<body>
+<div id="info">
+Minimal MARender Test
+</div>
+
+<script src="js/three.min.js"></script>
+<script src="js/TrackballControls.js"></script>
+<script src="js/STLLoader.js"></script>
+<script src="js/VTKLoader.js"></script>
+<script src="js/Detector.js"></script>
+<script src="js/MARender.js"></script>
+
+<script>
+
+if(!(Detector.webgl)) {
+  Detector.addGetWebGLMessage();
+}
+
+var container;
+container = document.createElement('div');
+document.body.appendChild(container);
+
+var ren = new MARenderer(window, container);
+ren.init();
+ren.addModel({name:        'emb',
+              path:        'models/emb.vtk',
+	      color:       0xf0f0f0,
+	      transparent: true,
+	      opacity:	   0.3});
+ren.addModel({name:        'neu',
+              path:        'models/neu.vtk',
+	      color:       0xf0f010,
+	      mode:        MARenderMode.POINT});
+ren.animate();
+
+</script>
+
+</body>
+</html>
