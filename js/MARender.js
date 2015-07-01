@@ -223,8 +223,8 @@ MARenderer = function(win, con) {
       if(child && (child.type === 'PointCloud')) {
         if(child.material && child.material.size) {
 	  child.material.size += inc;
-	  if(child.material.size > 5.0) {
-	    child.material.size = 5.0;
+	  if(child.material.size > 9.9) {
+	    child.material.size = 9.9;
 	  }
 	  else if(child.material.size < 0.1) {
 	    child.material.size = 0.1;
@@ -331,6 +331,7 @@ MARenderer = function(win, con) {
       case MARenderMode.LAMBERT:
 	sProp['color'] = itm.color;
 	sProp['wireframe'] = false;
+	sProp['side'] = THREE.DoubleSide;
 	sProp['opacity'] = itm.opacity;
 	sProp['transparent'] = itm.transparent;
 	mat = new THREE.MeshLambertMaterial(sProp);
@@ -338,6 +339,7 @@ MARenderer = function(win, con) {
       case MARenderMode.PHONG:
 	sProp['color'] = itm.color;
 	sProp['wireframe'] = false;
+	sProp['side'] = THREE.DoubleSide;
 	sProp['opacity'] = itm.opacity;
 	sProp['emissive'] = 0x000000;
 	sProp['transparent'] = itm.transparent;
