@@ -65,14 +65,14 @@ MARenderer = function(win, con) {
   this.camera;
   this.controls;
   this.renderer;
-  this.pointSize = 1;
+  this.pointSize = 2;
 
   this.init = function() {
     this.scene = new THREE.Scene();
 
-    this.camera = new THREE.PerspectiveCamera(75,
+    this.camera = new THREE.PerspectiveCamera(25,
 				   this.win.innerWidth / this.win.innerHeight,
-				   0.01, 1e10);
+				   0.1, 10000);
     this.camera.position.z = 1000;
 
     this.controls = new THREE.TrackballControls(this.camera);
@@ -83,15 +83,23 @@ MARenderer = function(win, con) {
 
     this.scene.add(this.camera);
     
-    this.ambLight = new THREE.AmbientLight(0x404040);
-    this.dirLight = new THREE.DirectionalLight(0x808080);
-    this.dirLight.position.set(0, 0, 100000).normalize();
-    this.pntLight = new THREE.PointLight(0xd0d0d0, 1, 100 );
-    this.pntLight.position.set(0, 0, 10000);
+    this.ambLight = new THREE.AmbientLight(0x777777);
+    this.dirLight = new THREE.DirectionalLight(0x777777);
+    this.dirLight.position.set(0, 0, 1);
+    this.pntLight = new THREE.PointLight(0x333333, 1, 100 );
+    this.pntLight.position.set(0, 0.5, 0);
     this.scene.add(this.pntLight);
-
     this.camera.add(this.ambLight);
     this.camera.add(this.dirLight);
+
+    /*
+    var skyGeom = new THREE.BoxGeometry(8000, 8000, 8000);
+    var skyMat  = new THREE.MeshBasicMaterial({name: 'sky',
+                                               color: 0xaaaaaa,
+                                               side: THREE.BackSide});
+    this.sky = new THREE.Mesh(skyGeom, skyMat);
+    this.scene.add(this.sky);
+    */
 
     this.raycaster = new THREE.Raycaster();
 
@@ -202,18 +210,43 @@ MARenderer = function(win, con) {
       if(child && (child.type === 'Mesh')) {
         if(child.material && child.material.transparent &&
 	   (child.material.opacity != undefined)) {
-	  child.material.opacity += inc;
+	  var op = child.material.opacity;
+	  var tr = child.material.transparent;
+	  if(inc > 0.0) {
+	    if(op < 0.01) {
+	      op = 1.0 / 64.0;
+	      } else {
+	        op *= 2.0;
+	      }
+	  } else {
+	    op /= 2.0;
+	  }
 	  child.visible = true;
-	  if(child.material.opacity > 1.0) {
-	    child.material.opacity = 1.0;
-	  }
-	  else if(child.material.opacity < 0.0) {
-	    child.material.opacity = 0.0;
-	    child.visible = false;
-	  }
+	  this.setMaterialOpacity(child.material, tr, op);
 	  child.material.needsUpdate = true;
 	}
       }
+    }
+  }
+
+  this.setMaterialOpacity = function(mat, tr, op) {
+    if(mat && tr) {
+      if(op < 0.01) {
+	mat['opacity'] = 0.0;
+	mat['visible'] = false;
+      } else {
+	if(op > 1.0) {
+	  op = 1.0;
+	}
+	if(op < 0.51) {
+	  mat['depthWrite'] = false;
+	} else {
+	  mat['depthWrite'] = true;
+	}
+	mat['opacity'] = op;
+	mat['visible'] = true;
+      }
+      console.log('HACK: opacity =' + op);
     }
   }
 
@@ -338,19 +371,23 @@ MARenderer = function(win, con) {
 	break;
       case MARenderMode.PHONG:
 	sProp['color'] = itm.color;
+	sProp['specular'] = 0x111111;
 	sProp['wireframe'] = false;
 	sProp['side'] = THREE.DoubleSide;
-	sProp['opacity'] = itm.opacity;
 	sProp['emissive'] = 0x000000;
+	sProp['shininess'] = 25;
 	sProp['transparent'] = itm.transparent;
+	this.setMaterialOpacity(sProp, itm.transparent, itm.opacity);
 	mat = new THREE.MeshPhongMaterial(sProp);
 	break;
       case MARenderMode.EMISSIVE:
 	sProp['color'] = itm.color;
+	sProp['specular'] =0x777777;
 	sProp['wireframe'] = false;
 	sProp['opacity'] = itm.opacity;
 	sProp['emissive'] = itm.color;
 	sProp['transparent'] = itm.transparent;
+	sProp['shininess'] = 15;
 	mat = new THREE.MeshPhongMaterial(sProp);
 	break;
       case MARenderMode.POINT:
@@ -359,6 +396,8 @@ MARenderer = function(win, con) {
 	sProp['opacity'] = itm.opacity;
 	sProp['transparent'] = itm.transparent;
 	sProp['size'] = this.pointSize;
+	sProp['blending'] = THREE.AdditiveBlending;
+	sProp['alphaTest'] = 0.50;
 	sProp['map'] = THREE.ImageUtils.loadTexture('textures/particle8.png');
 	mat = new THREE.PointCloudMaterial(sProp)
 	break;
@@ -435,10 +474,10 @@ MARenderer = function(win, con) {
           self.testCode();
         break;
       case 60: // < opacity down
-	self.opacityIncrement(-0.1);
+	self.opacityIncrement(-1);
 	break;
       case 62: // > opacity up
-	self.opacityIncrement(+0.1);
+	self.opacityIncrement(1);
 	break;
       case 104: // h
         self.home();
