@@ -52,6 +52,9 @@ MARenderItem = function() {
   this.mode             = MARenderMode.PHONG;
 }
 
+MARenderPickEvent = function() {
+}
+
 MARenderer = function(win, con) {
   var self = this;
   this.type = 'MARenderer';
@@ -66,6 +69,8 @@ MARenderer = function(win, con) {
   this.controls;
   this.renderer;
   this.pointSize = 2;
+  this.mousePos = new THREE.Vector2();
+  this.eventHandler = new THREE.EventDispatcher();
 
   this.init = function() {
     this.scene = new THREE.Scene();
@@ -92,20 +97,9 @@ MARenderer = function(win, con) {
     this.camera.add(this.ambLight);
     this.camera.add(this.dirLight);
 
-    /*
-    var skyGeom = new THREE.BoxGeometry(8000, 8000, 8000);
-    var skyMat  = new THREE.MeshBasicMaterial({name: 'sky',
-                                               color: 0xaaaaaa,
-                                               side: THREE.BackSide});
-    this.sky = new THREE.Mesh(skyGeom, skyMat);
-    this.scene.add(this.sky);
-    */
-
     this.raycaster = new THREE.Raycaster();
-
-    /* Picking not very reliable
-    self.win.addEventListener('click', self.mouseClick, false);
-    */
+    
+    self.win.addEventListener('mousemove', self.trackMouse, false);
     self.win.addEventListener('keypress', self.keyPressed, false);
     self.win.addEventListener('resize', self.windowResize, false);
   }
@@ -128,23 +122,20 @@ MARenderer = function(win, con) {
 	  var mat = self.makeMaterial(itm);
 	  if(mat) {
 	    if(gProp['mode'] &&
-	       (Number(gProp['mode']) == MARenderMode.POINT))
-	    {
+	       (Number(gProp['mode']) == MARenderMode.POINT)) {
 	      var pcld = new THREE.PointCloud(geom, mat);
 	      pcld.name = itm.name;
 	      pcld.sortParticles = true;
 	      self.scene.add(pcld);
 	    }
-	    else
-	    {
+	    else {
 	      var mesh = new THREE.Mesh(geom, mat);
 	      mesh.name = itm.name;
 	      self.scene.add(mesh);
 	    }
 	  }
           --(self.loadCount);
-	  if(self.loadCount < 2)
-	  {
+	  if(self.loadCount < 2) {
 	    self.home();
 	  }
 	});
@@ -246,7 +237,6 @@ MARenderer = function(win, con) {
 	mat['opacity'] = op;
 	mat['visible'] = true;
       }
-      console.log('HACK: opacity =' + op);
     }
   }
 
@@ -457,21 +447,42 @@ MARenderer = function(win, con) {
     self.renderer.render(self.scene, self.camera);
   }
 
-  this.mouseClick = function(e) {
-    var pos = new THREE.Vector2((e.clientX / self.win.innerWidth) * 2 - 1,
-                                (e.clientY / self.win.innerHeight) * 2 - 1);
-    // console.log('HACK x = ' + pos.x + ', y = ' + pos.y);
-    self.raycaster.setFromCamera(pos, self.camera );
-    var intersect = self.raycaster.intersectObjects(self.scene.children, false);
-    if (intersect.length) {
-      var hit = intersect[0].object;
+
+  this.addEventListener = function(type, listener) {
+    this.eventHandler.addEventListener(type, listener)
+  }
+
+  this.removeEventListener = function(type, listener) {
+    this.eventHandler.removeEventListener(type, listener)
+  }
+
+  this.pick = function() {
+    var pos = this.mousePos;
+    self.raycaster.setFromCamera(pos, self.camera);
+    var isct = self.raycaster.intersectObjects(self.scene.children, false);
+    if(isct.length > 0) {
+      self.eventHandler.dispatchEvent({type: 'pick',
+                                       hitlist: isct});
     }
+  }
+
+  this.mousePosAtEvent = function(e) {
+  var pos = (e.pageX)?
+            {'x':e.pageX, 'y':e.pageY}:
+	    {'x':e.clientX + this.con.scrollLeft + this.win.scrollLeft,
+	     'y':e.clientY + this.con.scrollTop +  this.win.scrollTop}; 
+    return(pos);
+  };
+
+  this.trackMouse = function(e) {
+    self.mousePos.x =  (e.clientX / self.win.innerWidth) *  2 - 1;
+    self.mousePos.y = -(e.clientY / self.win.innerHeight) * 2 + 1;
   }
 
   this.keyPressed = function(e) {
     switch(e.charCode) {
       case 33: // ! Test code
-          self.testCode();
+	self.testCode();
         break;
       case 60: // < opacity down
 	self.opacityIncrement(-1);
@@ -479,6 +490,9 @@ MARenderer = function(win, con) {
       case 62: // > opacity up
 	self.opacityIncrement(1);
 	break;
+      case 63: // ?
+	self.pick();
+        break;
       case 104: // h
         self.home();
 	break;
