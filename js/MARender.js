@@ -58,7 +58,6 @@ MARenderPickEvent = function() {
 MARenderer = function(win, con) {
   var self = this;
   this.type = 'MARenderer';
-  this.loadCount = 0;
   this.win = win;
   this.con = con;
   this.scene;
@@ -69,7 +68,15 @@ MARenderer = function(win, con) {
   this.controls;
   this.renderer;
   this.pointSize = 2;
-  this.mousePos = new THREE.Vector2();
+  this.mousePos = new THREE.Vector2(0,0);
+  this.nearPlane = 1;
+  this.farPlane = 10000;
+  this.setCamOnLoad = true;
+  this.setHomeOnLoad = true;
+  this.cameraPos = new THREE.Vector3(0, 0, 10000);
+  this.center   = new THREE.Vector3(0, 0, 0);
+  this.homeUp   = new THREE.Vector3(0, 0, 1);
+  this.homePos  = new THREE.Vector3(0, 0, 0);
   this.eventHandler = new THREE.EventDispatcher();
 
   this.init = function() {
@@ -77,10 +84,11 @@ MARenderer = function(win, con) {
 
     this.camera = new THREE.PerspectiveCamera(25,
 				   this.win.innerWidth / this.win.innerHeight,
-				   0.1, 10000);
-    this.camera.position.z = 1000;
+				   this.nearPlane, this.farPlane);
 
     this.controls = new THREE.TrackballControls(this.camera);
+    this.controls.panSpeed = 0.3;
+    this.controls.dynamicDampingFactor = 0.7;
 
     this.renderer = new THREE.WebGLRenderer({antialias: true});
     this.renderer.setSize(this.win.innerWidth, this.win.innerHeight);
@@ -91,7 +99,7 @@ MARenderer = function(win, con) {
     this.ambLight = new THREE.AmbientLight(0x777777);
     this.dirLight = new THREE.DirectionalLight(0x777777);
     this.dirLight.position.set(0, 0, 1);
-    this.pntLight = new THREE.PointLight(0x333333, 1, 100 );
+    this.pntLight = new THREE.PointLight(0x333333, 1, 10000);
     this.pntLight.position.set(0, 0.5, 0);
     this.scene.add(this.pntLight);
     this.camera.add(this.ambLight);
@@ -116,7 +124,6 @@ MARenderer = function(win, con) {
       } else {
 	console.log('MARenderer.addModel() unknown file type: ' + ext);
       }
-      ++(self.loadCount);
       loader.load(itm.path,
         function(geom) {
 	  var mat = self.makeMaterial(itm);
@@ -133,13 +140,63 @@ MARenderer = function(win, con) {
 	      mesh.name = itm.name;
 	      self.scene.add(mesh);
 	    }
-	  }
-          --(self.loadCount);
-	  if(self.loadCount < 2) {
-	    self.home();
+	    if(self.setCamOnLoad) {
+	      self.computeCenter();
+	      self.setCamera();
+	    }
+	    if(self.setHomeOnLoad) {
+	      self.setHome();
+	    }
+	    /*
+	    */
 	  }
 	});
     }
+  }
+
+  this.setCamera = function(cen, near, far, pos) {
+    if(cen || near || far || pos) {
+      this.setCamOnLoad = false;
+      if(cen) {
+	this.center.copy(cen);
+      }
+      if(near) {
+	this.nearPlane = near;
+      }
+      if(far) {
+	this.farPlane = far;
+      }
+      if(pos) {
+	this.cameraPos.copy(pos);
+      }
+    } else {
+      this.computeCenter();
+    }
+    this.camera.near = this.nearPlane;
+    this.camera.far = this.farPlane;
+    this.camera.position.copy(this.cameraPos);
+  }
+
+  this.setHome = function(pos, up) {
+    if(pos || up) {
+      this.setHomeOnLoad = false;
+    }
+    if(pos === undefined) {
+      pos = this.controls.object.position.clone();
+    }
+    if(up === undefined) {
+      up = this.controls.object.up.clone();
+    }
+    this.homeUp.copy(up);
+    this.homePos.copy(pos);
+    this.goHome();
+  }
+
+  this.goHome = function() {
+    this.controls.up0.copy(this.homeUp);
+    this.controls.position0.copy(this.homePos);
+    this.controls.target0.copy(this.center);
+    this.controls.reset();
   }
 
   this.updateObj = function(obj, gProp) {
@@ -354,7 +411,8 @@ MARenderer = function(win, con) {
       case MARenderMode.LAMBERT:
 	sProp['color'] = itm.color;
 	sProp['wireframe'] = false;
-	sProp['side'] = THREE.DoubleSide;
+	/* Use single sided, surfaces may need normals flipping
+	 * sProp['side'] = THREE.DoubleSide; */
 	sProp['opacity'] = itm.opacity;
 	sProp['transparent'] = itm.transparent;
 	mat = new THREE.MeshLambertMaterial(sProp);
@@ -363,7 +421,8 @@ MARenderer = function(win, con) {
 	sProp['color'] = itm.color;
 	sProp['specular'] = 0x111111;
 	sProp['wireframe'] = false;
-	sProp['side'] = THREE.DoubleSide;
+	/* Use single sided, surfaces may need normals flipping
+	 * sProp['side'] = THREE.DoubleSide; */
 	sProp['emissive'] = 0x000000;
 	sProp['shininess'] = 25;
 	sProp['transparent'] = itm.transparent;
@@ -395,7 +454,7 @@ MARenderer = function(win, con) {
     return(mat);
   }
 
-  this.home = function() {
+  this.computeCenter = function() {
     var n = 0;
     var box = new THREE.Box3();
     for(var i = 0, l = this.scene.children.length; i < l; i ++ ) {
@@ -416,29 +475,62 @@ MARenderer = function(win, con) {
       }
     }
     if(n > 0) {
-      var d, max;
-      var cen = box.center();
-      max = b.max.x - b.min.x;
-      d = b.max.y - b.min.y;
-      if(d > max)
+      var d, min, max, dMax;
+      min = box.min.x;
+      max = box.max.x;
+      dMax = box.max.x - box.min.x;
+      d = box.max.y - box.min.y;
+      if(d > dMax)
       {
-        max = d;
+        dMax = d;
       }
-      d = b.max.z - b.min.z;
-      if(d > max)
+      if(min > box.min.y)
       {
-        max = d;
+        min = box.min.y;
       }
-      var up = new THREE.Vector3(0, 1, 0);
-      this.camera.up.copy(up);
-      this.camera.position.set(0, 0, cen.z + (10 * max));
-      this.controls.up0.copy(up);
-      this.controls.target0.copy(cen);
-      this.controls.reset();
+      if(max < box.max.y)
+      {
+        max = box.max.y;
+      }
+      d = box.max.z - box.min.z;
+      if(d > dMax)
+      {
+        dMax = d;
+      }
+      if(min > box.min.z)
+      {
+        min = box.min.z;
+      }
+      if(max < box.max.z)
+      {
+        max = box.max.z;
+      }
+      this.center.copy(box.center());
+      this.nearPlane = (min < 0.0)? min * 2.0: min * 0.5;
+      this.farPlane =  (max < 0.0)? max * 0.5: max * 2.0;
+      this.cameraPos.set(0, 0, this.center.z + (4.0 * dMax));
     }
   }
 
   this.testCode	= function() {
+    console.log('ren.setCamera(new THREE.Vector3(' +
+		self.center.x + ', ' +
+		self.center.y + ', ' +
+		self.center.z + '), ' +
+		self.nearPlane + ', ' +
+		self.farPlane + ', ' +
+		'new THREE.Vector3(' +
+		self.camera.position.x + ', ' +
+		self.camera.position.y + ', ' +
+		self.camera.position.z + '));\n' +
+                'ren.setHome(new THREE.Vector3(' +
+		self.controls.object.position.x + ', ' +
+		self.controls.object.position.y + ', ' +
+		self.controls.object.position.z + '), ' +
+		'new THREE.Vector3(' +
+		self.camera.up.x + ', ' +
+		self.camera.up.y + ', ' +
+		self.camera.up.z + '));');
   }
 
   this.animate = function() {
@@ -493,9 +585,16 @@ MARenderer = function(win, con) {
       case 63: // ?
 	self.pick();
         break;
-      case 104: // h
-        self.home();
+      case 67: // C
+        self.setCamera();
+	self.goHome();
 	break;
+      case 72: // H
+	self.setHome();
+        break;
+      case 104: // h
+	self.goHome();
+        break;
       case 112: // p
 	self.pointSizeIncrement(+0.1);
         break;
@@ -511,7 +610,7 @@ MARenderer = function(win, con) {
       default:
         break;
     }
-    // console.log('HACK e.charCode = ' + e.charCode);
+    console.log('MARender: charCode = ' + e.charCode);
   }
 
   this.windowResize = function() {
