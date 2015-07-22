@@ -67,6 +67,7 @@ MARenderer = function(win, con) {
   this.camera;
   this.controls;
   this.renderer;
+  this.animCount = 0; // Frames since mouse movement, used to avoid busy loop.
   this.pointSize = 2;
   this.mousePos = new THREE.Vector2(0,0);
   this.nearPlane = 1;
@@ -534,9 +535,12 @@ MARenderer = function(win, con) {
   }
 
   this.animate = function() {
-    self.win.requestAnimationFrame(self.animate);
+    var aid = self.win.requestAnimationFrame(self.animate);
     self.controls.update();
     self.renderer.render(self.scene, self.camera);
+    if(++(self.animCount) > 400) {
+      self.win.cancelAnimationFrame(aid);
+    }
   }
 
 
@@ -558,17 +562,14 @@ MARenderer = function(win, con) {
     }
   }
 
-  this.mousePosAtEvent = function(e) {
-  var pos = (e.pageX)?
-            {'x':e.pageX, 'y':e.pageY}:
-	    {'x':e.clientX + this.con.scrollLeft + this.win.scrollLeft,
-	     'y':e.clientY + this.con.scrollTop +  this.win.scrollTop}; 
-    return(pos);
-  };
-
   this.trackMouse = function(e) {
+    var count = self.animCount;
     self.mousePos.x =  (e.clientX / self.win.innerWidth) *  2 - 1;
     self.mousePos.y = -(e.clientY / self.win.innerHeight) * 2 + 1;
+    self.animCount = 0;
+    if(count > 200) {
+      self.animate();
+    }
   }
 
   this.keyPressed = function(e) {
