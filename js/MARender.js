@@ -67,7 +67,7 @@ MARenderer = function(win, con) {
   this.camera;
   this.controls;
   this.renderer;
-  this.animCount = 0; // Frames since mouse movement, used to avoid busy loop.
+  this.animCount = 0;    // Used to count animation frames since mouse movement
   this.pointSize = 2;
   this.mousePos = new THREE.Vector2(0,0);
   this.nearPlane = 1;
@@ -129,17 +129,22 @@ MARenderer = function(win, con) {
         function(geom) {
 	  var mat = self.makeMaterial(itm);
 	  if(mat) {
-	    if(gProp['mode'] &&
-	       (Number(gProp['mode']) == MARenderMode.POINT)) {
-	      var pcld = new THREE.PointCloud(geom, mat);
-	      pcld.name = itm.name;
-	      pcld.sortParticles = true;
-	      self.scene.add(pcld);
+	    var mod = itm.mode;
+	    if(gProp['mode']) {
+	      mod = gProp['mode'];
 	    }
-	    else {
-	      var mesh = new THREE.Mesh(geom, mat);
-	      mesh.name = itm.name;
-	      self.scene.add(mesh);
+	    switch(Number(mod)) {
+	      case MARenderMode.POINT:
+		var pcld = new THREE.PointCloud(geom, mat);
+		pcld.name = itm.name;
+		pcld.sortParticles = true;
+		self.scene.add(pcld);
+		break;
+	      default:
+		var mesh = new THREE.Mesh(geom, mat);
+		mesh.name = itm.name;
+		self.scene.add(mesh);
+		break;
 	    }
 	    if(self.setCamOnLoad) {
 	      self.computeCenter();
@@ -148,8 +153,6 @@ MARenderer = function(win, con) {
 	    if(self.setHomeOnLoad) {
 	      self.setHome();
 	    }
-	    /*
-	    */
 	  }
 	});
     }
@@ -243,12 +246,14 @@ MARenderer = function(win, con) {
 	this.updateObj(obj, gProp);
       }
     }
+    this.render();
   }
 
   this.removeModel = function(name) {
     var obj = this.scene.getObjectByName(name, true);
     if(obj) {
       this.scene.remove(obj);
+      this.render();
     }
   }
 
@@ -273,6 +278,7 @@ MARenderer = function(win, con) {
 	  child.visible = true;
 	  this.setMaterialOpacity(child.material, tr, op);
 	  child.material.needsUpdate = true;
+          this.render();
 	}
       }
     }
@@ -295,6 +301,7 @@ MARenderer = function(win, con) {
 	mat['opacity'] = op;
 	mat['visible'] = true;
       }
+      this.render();
     }
   }
 
@@ -311,6 +318,7 @@ MARenderer = function(win, con) {
 	    child.material.size = 0.1;
 	  }
 	  child.material.needsUpdate = true;
+          this.render();
 	}
       }
     }
@@ -322,6 +330,7 @@ MARenderer = function(win, con) {
       if(child && (child.type === 'Mesh')) {
         if(child.material) {
 	  this.updateObj(child, gProp);
+          this.render();
         }
       }
     }
@@ -333,6 +342,7 @@ MARenderer = function(win, con) {
       if(child && (child.type === 'PointCloud')) {
         if(child.material) {
 	  this.updateObj(child, gProp);
+          this.render();
         }
       }
     }
@@ -461,7 +471,8 @@ MARenderer = function(win, con) {
     for(var i = 0, l = this.scene.children.length; i < l; i ++ ) {
       var child = this.scene.children[i];
       if(child && 
-         ((child.type === 'Mesh') || (child.type === 'PointCloud'))) {
+         ((child.type === 'Mesh') ||
+	  (child.type === 'PointCloud'))) {
 	++n;
 	var b = new THREE.Box3();
 	b.setFromObject(child);
@@ -534,10 +545,14 @@ MARenderer = function(win, con) {
 		self.camera.up.z + '));');
   }
 
+  this.render = function() {
+    this.renderer.render(self.scene, self.camera);
+  }
+
   this.animate = function() {
     var aid = self.win.requestAnimationFrame(self.animate);
     self.controls.update();
-    self.renderer.render(self.scene, self.camera);
+    self.render();
     if(++(self.animCount) > 400) {
       self.win.cancelAnimationFrame(aid);
     }
