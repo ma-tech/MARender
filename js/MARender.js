@@ -153,6 +153,7 @@ MARenderer = function(win, con) {
 	    if(self.setHomeOnLoad) {
 	      self.setHome();
 	    }
+	    self.makeLive();
 	  }
 	});
     }
@@ -578,12 +579,16 @@ MARenderer = function(win, con) {
   }
 
   this.trackMouse = function(e) {
-    var count = self.animCount;
     self.mousePos.x =  (e.clientX / self.win.innerWidth) *  2 - 1;
     self.mousePos.y = -(e.clientY / self.win.innerHeight) * 2 + 1;
-    self.animCount = 0;
+    self.makeLive();
+  }
+
+  this.makeLive = function() {
+    var count = this.animCount;
+    this.animCount = 0;
     if(count > 200) {
-      self.animate();
+      this.animate();
     }
   }
 
@@ -634,6 +639,10 @@ MARenderer = function(win, con) {
     self.camera.updateProjectionMatrix();
     self.renderer.setSize(self.win.innerWidth, self.win.innerHeight);
     self.controls.handleResize();
+  }
+
+  this.getChildren = function() {
+    return this.scene.children;
   }
 
 }
