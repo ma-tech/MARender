@@ -107,7 +107,7 @@ MARenderer = function(win, con) {
     this.camera.add(this.dirLight);
 
     this.raycaster = new THREE.Raycaster();
-    
+
     self.win.addEventListener('mousemove', self.trackMouse, false);
     self.win.addEventListener('keypress', self.keyPressed, false);
     self.win.addEventListener('resize', self.windowResize, false);
@@ -639,6 +639,7 @@ MARenderer = function(win, con) {
     self.camera.updateProjectionMatrix();
     self.renderer.setSize(self.win.innerWidth, self.win.innerHeight);
     self.controls.handleResize();
+    self.setCamera();
   }
 
   this.getChildren = function() {
