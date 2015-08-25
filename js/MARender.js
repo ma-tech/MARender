@@ -87,6 +87,7 @@ MARenderer = function(win, con) {
 				   this.win.innerWidth / this.win.innerHeight,
 				   this.nearPlane, this.farPlane);
 
+    this.camera.updateProjectionMatrix();
     this.controls = new THREE.TrackballControls(this.camera);
     this.controls.panSpeed = 0.3;
     this.controls.dynamicDampingFactor = 0.7;
@@ -179,6 +180,7 @@ MARenderer = function(win, con) {
     }
     this.camera.near = this.nearPlane;
     this.camera.far = this.farPlane;
+    this.camera.updateProjectionMatrix(); // HACK
     this.camera.position.copy(this.cameraPos);
   }
 
@@ -519,8 +521,8 @@ MARenderer = function(win, con) {
         max = box.max.z;
       }
       this.center.copy(box.center());
-      this.nearPlane = (min < 0.0)? min * 2.0: min * 0.5;
-      this.farPlane =  (max < 0.0)? max * 0.5: max * 2.0;
+      this.nearPlane = (min < 0.2)? 0.1: min * 0.5;
+      this.farPlane =  (max < 1.0)? 10.0: max * 10.0;
       this.cameraPos.set(0, 0, this.center.z + (4.0 * dMax));
     }
   }
@@ -639,7 +641,7 @@ MARenderer = function(win, con) {
     self.camera.updateProjectionMatrix();
     self.renderer.setSize(self.win.innerWidth, self.win.innerHeight);
     self.controls.handleResize();
-    self.setCamera();
+    self.makeLive();
   }
 
   this.getChildren = function() {
