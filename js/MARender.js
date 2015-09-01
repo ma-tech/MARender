@@ -308,14 +308,29 @@ MARenderer = function(win, con) {
     }
   }
 
+
+  this.pointSizeSet = function(sz) {
+    for(var i = 0, l = this.scene.children.length; i < l; i ++ ) {
+      var child = this.scene.children[i];
+      if(child && (child.type === 'PointCloud')) {
+        if(child.material && child.material.size) {
+	  child.material.size = sz;
+	  child.material.needsUpdate = true;
+          this.render();
+	}
+      }
+    }
+    this.pointSize = sz;
+  }
+
   this.pointSizeIncrement = function(inc) {
     for(var i = 0, l = this.scene.children.length; i < l; i ++ ) {
       var child = this.scene.children[i];
       if(child && (child.type === 'PointCloud')) {
         if(child.material && child.material.size) {
 	  child.material.size += inc;
-	  if(child.material.size > 9.9) {
-	    child.material.size = 9.9;
+	  if(child.material.size > 99.9) {
+	    child.material.size = 99.9;
 	  }
 	  else if(child.material.size < 0.1) {
 	    child.material.size = 0.1;
