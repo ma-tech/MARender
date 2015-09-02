@@ -180,7 +180,7 @@ MARenderer = function(win, con) {
     }
     this.camera.near = this.nearPlane;
     this.camera.far = this.farPlane;
-    this.camera.updateProjectionMatrix(); // HACK
+    this.camera.updateProjectionMatrix();
     this.camera.position.copy(this.cameraPos);
   }
 
