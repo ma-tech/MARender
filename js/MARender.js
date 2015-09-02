@@ -239,7 +239,11 @@ MARenderer = function(win, con) {
       }
     }
     var mat = this.makeMaterial(itm);
+    var oldmat = obj.material;
     obj.material = mat;
+    if(oldmat) {
+      oldmat.dispose();
+    }
   }
 
   this.updateModel = function(gProp) {
