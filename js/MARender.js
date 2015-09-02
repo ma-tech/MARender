@@ -58,6 +58,7 @@ MARenderPickEvent = function() {
 MARenderer = function(win, con) {
   var self = this;
   this.type = 'MARenderer';
+  Object.defineProperty(self, 'version', {value: '1.0.0', writable: false});
   this.win = win;
   this.con = con;
   this.scene;
@@ -543,6 +544,7 @@ MARenderer = function(win, con) {
   }
 
   this.testCode	= function() {
+    console.log('ren.version = ' + self.version);
     console.log('ren.setCamera(new THREE.Vector3(' +
 		self.center.x + ', ' +
 		self.center.y + ', ' +
