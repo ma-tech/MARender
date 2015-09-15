@@ -1,4 +1,4 @@
-/**
+/*!
 * \file         MARender.js
 * \author       Bill Hill
 * \date         June 2015
@@ -34,31 +34,45 @@
 * 		at displaying anatomy and gene expression domains in 3D.
 */
 
+/**
+* Rendering modes
+*/
 MARenderMode = {
   BASIC:                0,
   WIREFRAME:            1,
   LAMBERT:              2,
   PHONG:                3,
   EMISSIVE:             4,
-  POINT:		5
+  POINT:		5,
+  SECTION:		6
 }
 
+/**
+* Properties which may be set when adding or updating a model.
+*/
 MARenderItem = function() {
-  this.name             = '';
-  this.path             = '';
+  this.name             = undefined;
+  this.path             = undefined;
   this.color            = 0x000000;
   this.transparent      = false;
   this.opacity          = 1.0;
   this.mode             = MARenderMode.PHONG;
+  this.vertices		= undefined;
+  this.texture		= undefined;
 }
 
-MARenderPickEvent = function() {
-}
-
+/*!
+* \class	MARenderer
+* \constructor
+* \brief 	Creates a new renderer.
+* \param win	The window used by the renderer.
+* \param con	The container used by the renderer. A new div for the
+* 		renderer will be created within this container.
+*/
 MARenderer = function(win, con) {
   var self = this;
   this.type = 'MARenderer';
-  Object.defineProperty(self, 'version', {value: '1.0.0', writable: false});
+  Object.defineProperty(self, 'version', {value: '1.1.0', writable: false});
   this.win = win;
   this.con = con;
   this.scene;
@@ -80,8 +94,10 @@ MARenderer = function(win, con) {
   this.homeUp   = new THREE.Vector3(0, 0, 1);
   this.homePos  = new THREE.Vector3(0, 0, 0);
   this.eventHandler = new THREE.EventDispatcher();
+  THREE.ImageUtils.crossOrigin = ''; // To allow CORS textures
 
   this.init = function() {
+
     this.scene = new THREE.Scene();
 
     this.camera = new THREE.PerspectiveCamera(25,
@@ -110,57 +126,160 @@ MARenderer = function(win, con) {
 
     this.raycaster = new THREE.Raycaster();
 
-    self.win.addEventListener('mousemove', self.trackMouse, false);
-    self.win.addEventListener('keypress', self.keyPressed, false);
-    self.win.addEventListener('resize', self.windowResize, false);
+    self.win.addEventListener('mousemove', self._trackMouse, false);
+    self.win.addEventListener('keypress', self._keyPressed, false);
+    self.win.addEventListener('resize', self._windowResize, false);
   }
 
+  /*!
+   * \class     MARenderer
+   * \function	addModel
+   * \brief	Adds a new model to the renderer using the given properties.
+   * \param gProp	Model properties which conform to MARenderItem and
+   * 			must include a unique name.
+   */
   this.addModel = function(gProp) {
     var loader;
-    var itm = this.makeRenderItem(gProp);
+    var itm = this._makeRenderItem(gProp);
     if(itm) {
-      var ext = itm.path.split('.').pop();
-      if(ext === 'stl') {
-        loader = new THREE.STLLoader();
-      } else if(ext === 'vtk') {
-        loader = new THREE.VTKLoader();
-      } else {
-	console.log('MARenderer.addModel() unknown file type: ' + ext);
-      }
-      loader.load(itm.path,
-        function(geom) {
-	  var mat = self.makeMaterial(itm);
-	  if(mat) {
-	    var mod = itm.mode;
-	    if(gProp['mode']) {
-	      mod = gProp['mode'];
+      switch(Number(itm.mode)) {
+	case MARenderMode.BASIC:
+	case MARenderMode.WIREFRAME:
+	case MARenderMode.LAMBERT:
+	case MARenderMode.PHONG:
+	case MARenderMode.EMISSIVE:
+	case MARenderMode.POINT:
+	  if(itm.path) {
+	    var ext = itm.path.split('.').pop();
+	    if(ext === 'stl') {
+	      loader = new THREE.STLLoader();
+	    } else if(ext === 'vtk') {
+	      loader = new THREE.VTKLoader();
+	    } else {
+	      console.log('MARenderer.addModel() unknown file type: ' + ext);
 	    }
-	    switch(Number(mod)) {
-	      case MARenderMode.POINT:
-		var pcld = new THREE.PointCloud(geom, mat);
-		pcld.name = itm.name;
-		pcld.sortParticles = true;
-		self.scene.add(pcld);
-		break;
-	      default:
-		var mesh = new THREE.Mesh(geom, mat);
-		mesh.name = itm.name;
-		self.scene.add(mesh);
-		break;
-	    }
-	    if(self.setCamOnLoad) {
-	      self.computeCenter();
-	      self.setCamera();
-	    }
-	    if(self.setHomeOnLoad) {
-	      self.setHome();
-	    }
-	    self.makeLive();
+	    loader.load(itm.path,
+	      function(geom) {
+		var mat = self._makeMaterial(itm);
+		if(mat) {
+		  switch(Number(itm.mode)) {
+		    case MARenderMode.POINT:
+		      var pcld = new THREE.PointCloud(geom, mat);
+		      pcld.name = itm.name;
+		      pcld.sortParticles = true;
+		      self.scene.add(pcld);
+		      break;
+		    default:
+		      var mesh = new THREE.Mesh(geom, mat);
+		      mesh.name = itm.name;
+		      self.scene.add(mesh);
+		      break;
+		  }
+		  if(self.setCamOnLoad) {
+		    self._computeCenter();
+		    self.setCamera();
+		  }
+		  if(self.setHomeOnLoad) {
+		    self.setHome();
+		  }
+		  self.makeLive();
+		}
+	      },
+	      function(){},
+	      function() {
+		console.log('MARenderer.addModel() geometry load failed: ' +
+		            itm.path);
+	      });
 	  }
-	});
+	  break;
+	case MARenderMode.SECTION:
+	  if(itm.texture) {
+	    THREE.ImageUtils.loadTexture(itm.texture,
+		THREE.UVMapping,
+		function(tex) {
+		  // onLoad
+		  var geom = self.makeSectionGeometry(itm.vertices);
+		  var mat = self._makeMaterial(itm);
+		  tex.flipY = false;
+		  tex.minFilter = THREE.LinearFilter;
+		  tex.needsUpdate = true;
+		  mat.map = tex;
+		  var pln = new THREE.Mesh(geom, mat);
+		  pln.name = itm.name;
+		  self.scene.add(pln);
+		  self.makeLive();
+		},
+		function() {
+	          console.log('MARenderer.addModel() texture load failed: ' +
+		              itm.texture);
+		});
+	  }
+	  break;
+	default:
+	  break;
+      }
     }
   }
 
+  /*!
+   * \class     MARenderer
+   * \function	updateModel
+   * \brief	Updates an existing model of the renderer using the given
+   * 		properties.
+   * \param gProp	Model properties which conform to MARenderItem and
+   * 			must include a unique name.
+   */
+  this.updateModel = function(gProp) {
+    if(gProp['name']) {
+      var name = gProp['name'];
+      var obj = this.scene.getObjectByName(name, true);
+      if(obj) {
+	this._updateObj(obj, gProp);
+      }
+    }
+    this.render();
+  }
+
+  /*!
+   * \class	MARenderer
+   * \function	makeSectionGeometry
+   * \return	New geometry.
+   * \brief	Create a geometry for use in rendering planar sections.
+   * \param vertices	Array of four ordered 3D vertices at the position
+   * 			of the rectangular sections corners.
+   */
+  this.makeSectionGeometry = function(vertices) {
+    var geom = new THREE.Geometry();
+    if(vertices) {
+      geom.vertices = vertices.slice(0);
+    } else {
+      geom.vertices = [new THREE.Vector3(0, 0, 0),
+		       new THREE.Vector3(1, 0, 0),
+		       new THREE.Vector3(1, 1, 0),
+		       new THREE.Vector3(0, 1, 0)];
+    }
+    geom.faces = [new THREE.Face3(0, 1, 2),
+		  new THREE.Face3(2, 3, 0)];
+    geom.faceVertexUvs[0] = [[new THREE.Vector2(0, 0),
+			      new THREE.Vector2(1, 0),
+			      new THREE.Vector2(1, 1)],
+			    [new THREE.Vector2(1, 1),
+			     new THREE.Vector2(0, 1),
+			     new THREE.Vector2(0, 0)]];
+    geom.computeFaceNormals();
+    geom.computeBoundingBox();
+    return(geom);
+  }
+
+  /*!
+   * \class	MARenderer
+   * \function	setCamera
+   * \brief	Sets the camera for the renderer.
+   * \param cen		Centre of the scene.
+   * \param near	Camera near plane.
+   * \param far		Camera far plane.
+   * \param pos		Camera position.
+   */
   this.setCamera = function(cen, near, far, pos) {
     if(cen || near || far || pos) {
       this.setCamOnLoad = false;
@@ -177,7 +296,7 @@ MARenderer = function(win, con) {
 	this.cameraPos.copy(pos);
       }
     } else {
-      this.computeCenter();
+      this._computeCenter();
     }
     this.camera.near = this.nearPlane;
     this.camera.far = this.farPlane;
@@ -185,6 +304,15 @@ MARenderer = function(win, con) {
     this.camera.position.copy(this.cameraPos);
   }
 
+  /*!
+   * \class	MARenderer
+   * \function	setHome
+   * \brief	Sets the camera home position.
+   * \param pos		Given camera home position, default is the current
+   * 			camera trackball position.
+   * \param up		Given camera up vector, default is the current
+   * 			camera trackball up vector.
+   */
   this.setHome = function(pos, up) {
     if(pos || up) {
       this.setHomeOnLoad = false;
@@ -200,6 +328,11 @@ MARenderer = function(win, con) {
     this.goHome();
   }
 
+  /*!
+   * \class	MARenderer
+   * \function	goHome
+   * \brief	Moves the camera trackball to the current home position.
+   */
   this.goHome = function() {
     this.controls.up0.copy(this.homeUp);
     this.controls.position0.copy(this.homePos);
@@ -207,65 +340,33 @@ MARenderer = function(win, con) {
     this.controls.reset();
   }
 
-  this.updateObj = function(obj, gProp) {
-    var itm = new MARenderItem();
-    if(itm) {
-      itm.name = name;
-      if(gProp['color']) {
-	itm.color = gProp['color'];
-      } else if(obj.material && obj.material.color) {
-	itm.color = obj.material.color;
-      }
-      if(gProp['opacity']) {
-	itm.opacity = gProp['opacity'];
-      } else if(obj.material && obj.material.opacity) {
-	itm.opacity = obj.material.opacity;
-      }
-      if(gProp['transparent']) {
-	itm.transparent = gProp['transparent'];
-      } else if(obj.material && obj.material.transparent) {
-	itm.transparent = obj.material.transparent;
-      }
-      if(gProp['mode']) {
-	// Always set the mode/material type
-	var mode = this.checkMode(gProp['mode']);
-	if(mode) {
-	  itm.mode = mode;
-	}
-      } else {
-        if(obj.type === 'PointCloud') {
-	  itm.mode = MARenderMode.POINT;
-	}
-      }
-    }
-    var mat = this.makeMaterial(itm);
-    var oldmat = obj.material;
-    obj.material = mat;
-    if(oldmat) {
-      oldmat.dispose();
-    }
-  }
-
-  this.updateModel = function(gProp) {
-    if(gProp['name']) {
-      name = gProp['name'];
-      var obj = this.scene.getObjectByName(name, true);
-      if(obj) {
-	this.updateObj(obj, gProp);
-      }
-    }
-    this.render();
-  }
-
+  /*!
+   * \class	MARenderer
+   * \function	removeModel
+   * \brief	Removes the named model and frees its resources.
+   * \param name	Given model name.
+   */
   this.removeModel = function(name) {
     var obj = this.scene.getObjectByName(name, true);
     if(obj) {
       this.scene.remove(obj);
+      if(obj.material) {
+        obj.material.dispose();
+      }
+      if(obj.geometry) {
+        obj.geometry.dispose();
+      }
       this.render();
     }
   }
 
-
+  /*!
+   * \class	MARenderer
+   * \function	opacityIncrement
+   * \brief	Increments the opacity of all transparent models.
+   * \param inc		Opacity increment which may be positive or
+   * 			negative.
+   */
   this.opacityIncrement = function(inc) {
     for(var i = 0, l = this.scene.children.length; i < l; i ++ ) {
       var child = this.scene.children[i];
@@ -284,7 +385,7 @@ MARenderer = function(win, con) {
 	    op /= 2.0;
 	  }
 	  child.visible = true;
-	  this.setMaterialOpacity(child.material, tr, op);
+	  this._setMaterialOpacity(child.material, tr, op);
 	  child.material.needsUpdate = true;
           this.render();
 	}
@@ -292,7 +393,167 @@ MARenderer = function(win, con) {
     }
   }
 
-  this.setMaterialOpacity = function(mat, tr, op) {
+  /*!
+   * \class	MARenderer
+   * \function	pointSizeSet
+   * \brief	Sets the current default point size and the point size of
+   * 		all point cloud models.
+   * \param sz		Given point size. By default the current point size
+   * 			is used.
+   */
+  this.pointSizeSet = function(sz) {
+    if(sz === undefined) {
+      sz = this.pointSize;
+    }
+    for(var i = 0, l = this.scene.children.length; i < l; i ++ ) {
+      var child = this.scene.children[i];
+      if(child && (child.type === 'PointCloud')) {
+        if(child.material && child.material.size) {
+	  child.material.size = sz;
+	  child.material.needsUpdate = true;
+          this.render();
+	}
+      }
+    }
+    this.pointSize = sz;
+  }
+
+  /*!
+   * \class	MARenderer
+   * \function	pointSizeIncrement
+   * \brief	Increments the point size of all point cloud models.
+   * \param inc		Increment which may be positive or negative.
+   */
+  this.pointSizeIncrement = function(inc) {
+    for(var i = 0, l = this.scene.children.length; i < l; i ++ ) {
+      var child = this.scene.children[i];
+      if(child && (child.type === 'PointCloud')) {
+        if(child.material && child.material.size) {
+	  child.material.size += inc;
+	  if(child.material.size > 99.9) {
+	    child.material.size = 99.9;
+	  }
+	  else if(child.material.size < 0.1) {
+	    child.material.size = 0.1;
+	  }
+	  child.material.needsUpdate = true;
+          this.render();
+	}
+      }
+    }
+  }
+
+  /*!
+   * \class	MARenderer
+   * \function	render
+   * \brief	Renders the scene now.
+   */
+  this.render = function() {
+    this.renderer.render(self.scene, self.camera);
+  }
+
+  /*!
+   * \class	MARenderer
+   * \function	animate
+   * \brief	Starts rendering the scene. The rendering will be repeated
+   * 		under the control of a timer and following mouse movement
+   * 		or scene updates.
+   */
+  this.animate = function() {
+    var aid = self.win.requestAnimationFrame(self.animate);
+    self.controls.update();
+    self.render();
+    if(++(self.animCount) > 400) {
+      self.win.cancelAnimationFrame(aid);
+    }
+  }
+
+  /*!
+   * \class	MARenderer
+   * \function	makeLive
+   * \brief	Makes sure that the scene is rendered and resets the
+   * 		rendering timer.
+   */
+  this.makeLive = function() {
+    var count = this.animCount;
+    this.animCount = 0;
+    if(count > 200) {
+      this.animate();
+    }
+  }
+
+  /*!
+   * \class 	MARenderer
+   * \function	addEventListener
+   * \brief	Adds the event listener.
+   * \param type	Event type.
+   * \param listener	The event listener function.
+   */
+  this.addEventListener = function(type, listener) {
+    this.eventHandler.addEventListener(type, listener)
+  }
+
+  /*!
+   * \class 	MARenderer
+   * \function	removeEventListener
+   * \brief	Removes the event listener.
+   * \param type	Event type.
+   * \param listener	The event listener function.
+   */
+  this.removeEventListener = function(type, listener) {
+    this.eventHandler.removeEventListener(type, listener)
+  }
+
+  /*!
+   * \class	MARenderer
+   * \function	getIIP3DBBVertices
+   * \brief	Get vertices of the section defined by the IIP3D request
+   *            encoded in the given URL using voxel scaling.
+   * \param url		The IIP3D URL which should define the section but
+   *                    not include an OBJ, CVT or tile request.
+   * \param vsz		The voxel size, supplied as a THREE.Vector3().
+   */
+  this.getIIP3DBBVertices = function(url, vsz) {
+    var prmX = [0, 1, 1, 0];
+    var prmY = [0, 0, 1, 1];
+    var max = new THREE.Vector2();
+    var vtx = [new THREE.Vector3(), new THREE.Vector3(),
+	       new THREE.Vector3(), new THREE.Vector3()];
+    var req = new XMLHttpRequest();
+    req.open('GET', url + '&OBJ=Wlz-true-voxel-size', false);
+    req.send(null);
+    req.open('GET', url + '&OBJ=Max-size', false);
+    req.send(null);
+    if(req.status === 200) {
+      // rsp = Max-size:321 173
+      var rsp = req.responseText.split(':')[1].split(' ');
+      max.x = rsp[0] - 1.0;
+      max.y = rsp[1] - 1.0;
+    }
+    for(var idx = 0; idx < 4; ++idx) {
+      req.open('GET', url + '&PRL=-1,' +
+	       prmX[idx] * max.x + ',' +
+	       prmY[idx] * max.y +
+               '&OBJ=Wlz-coordinate-3D', false);
+      req.send(null);
+      if(req.status === 200) {
+	var rsp = req.responseText.split(':')[1].split(' ');
+	vtx[idx].set(rsp[0] * vsz.x, rsp[1] * vsz.y, rsp[2] * vsz.z);
+      }
+    }
+    return(vtx);
+  }
+
+  /*!
+   * \class	MARenderer
+   * \function	_setMaterialOpacity
+   * \brief	Sets the opacity of the given material.
+   * \param mat		Given material.
+   * \param tr		True if material is tranparent, if false function
+   * 			simply returns.
+   * \param op		Given opacity.
+   */
+  this._setMaterialOpacity = function(mat, tr, op) {
     if(mat && tr) {
       if(op < 0.01) {
 	mat['opacity'] = 0.0;
@@ -313,65 +574,122 @@ MARenderer = function(win, con) {
     }
   }
 
-
-  this.pointSizeSet = function(sz) {
-    for(var i = 0, l = this.scene.children.length; i < l; i ++ ) {
-      var child = this.scene.children[i];
-      if(child && (child.type === 'PointCloud')) {
-        if(child.material && child.material.size) {
-	  child.material.size = sz;
-	  child.material.needsUpdate = true;
-          this.render();
+  /*!
+   * \class 	MARenderer
+   * \function	_updateObj
+   * \brief	Updates the given objects properties.
+   * \param obj		Given object.
+   * \param		Properties to set in the given object.
+   */
+  this._updateObj = function(obj, gProp) {
+    var itm = new MARenderItem();
+    if(itm) {
+      itm.name = name;
+      if(gProp['color']) {
+	itm.color = gProp['color'];
+      } else if(obj.material && obj.material.color) {
+	itm.color = obj.material.color;
+      }
+      if(gProp['opacity']) {
+	itm.opacity = gProp['opacity'];
+      } else if(obj.material && obj.material.opacity) {
+	itm.opacity = obj.material.opacity;
+      }
+      if(gProp['transparent']) {
+	itm.transparent = gProp['transparent'];
+      } else if(obj.material && obj.material.transparent) {
+	itm.transparent = obj.material.transparent;
+      }
+      if(gProp['texture']) {
+	itm.texture = gProp['texture'].slice(0);
+      }
+      if(gProp['vertices']) {
+	itm.vertices = gProp['vertices'].slice(0);
+      }
+      if(gProp['mode']) {
+	// Always set the mode/material type
+	var mode = this._checkRenderMode(gProp['mode']);
+	if(mode) {
+	  itm.mode = mode;
+	}
+      } else {
+        if(obj.type === 'PointCloud') {
+	  itm.mode = MARenderMode.POINT;
 	}
       }
     }
-    this.pointSize = sz;
-  }
-
-  this.pointSizeIncrement = function(inc) {
-    for(var i = 0, l = this.scene.children.length; i < l; i ++ ) {
-      var child = this.scene.children[i];
-      if(child && (child.type === 'PointCloud')) {
-        if(child.material && child.material.size) {
-	  child.material.size += inc;
-	  if(child.material.size > 99.9) {
-	    child.material.size = 99.9;
-	  }
-	  else if(child.material.size < 0.1) {
-	    child.material.size = 0.1;
-	  }
-	  child.material.needsUpdate = true;
-          this.render();
+    switch(Number(itm.mode)) {
+      case MARenderMode.BASIC:
+      case MARenderMode.WIREFRAME:
+      case MARenderMode.LAMBERT:
+      case MARenderMode.PHONG:
+      case MARenderMode.EMISSIVE:
+      case MARenderMode.POINT:
+        var mat = this._makeMaterial(itm);
+	var oldmat = obj.material;
+	obj.material = mat;
+	if(oldmat) {
+	  oldmat.dispose();
 	}
-      }
+	break;
+      case MARenderMode.SECTION:
+	{
+	  var tex = obj.material.map;
+	  var geom = this.makeSectionGeometry(itm.vertices);
+	  if(itm.texture) {
+	    THREE.ImageUtils.loadTexture(itm.texture,
+		THREE.UVMapping,
+		function(tex) {
+		  // onLoad
+		  var oldgeom = obj.geometry;
+		  var oldtex = obj.material.map;
+		  var geom = self.makeSectionGeometry(itm.vertices);
+		  tex.flipY = false;
+		  tex.minFilter = THREE.LinearFilter;
+		  tex.needsUpdate = true;
+		  obj.material.map = tex;
+		  obj.geometry = geom;
+		  oldtex.dispose();
+		  oldgeom.dispose();
+		  self.makeLive();
+		},
+		function() {
+	          console.log('MARenderer.updateObj() texture load failed: ' +
+		              itm.texture);
+		});
+	  }
+	}
+	break;
     }
   }
 
-  this.updateAllMesh = function(gProp) {
+  /*!
+   * \class	MARenderer
+   * \function	_updateAllMesh
+   * \brief	Updates the properties of all meshes.
+   * \param gProp	Given properties to update.
+   */
+  this._updateAllMesh = function(gProp) {
     for(var i = 0, l = this.scene.children.length; i < l; i ++ ) {
       var child = this.scene.children[i];
       if(child && (child.type === 'Mesh')) {
-        if(child.material) {
-	  this.updateObj(child, gProp);
+        if(child.material && !(child.material.map)) {
+	  this._updateObj(child, gProp);
           this.render();
         }
       }
     }
   }
 
-  this.updateAllPoint = function(gProp) {
-    for(var i = 0, l = this.scene.children.length; i < l; i ++ ) {
-      var child = this.scene.children[i];
-      if(child && (child.type === 'PointCloud')) {
-        if(child.material) {
-	  this.updateObj(child, gProp);
-          this.render();
-        }
-      }
-    }
-  }
-
-  this.makeRenderItem = function(gProp) {
+  /*!
+   * \class	MARenderer
+   * \function	_makeRenderItem
+   * \return	New render item.
+   * \brief	Create a new render item the given properties set.
+   * 		All properties not given have the default value.
+   * \param gProp	Given properties.
+   */
+  this._makeRenderItem = function(gProp) {
     var ok = true;
     var itm = new MARenderItem();
     for(var p in gProp) {
@@ -388,14 +706,20 @@ MARenderer = function(win, con) {
           itm[p] = Boolean(gProp[p]);
           break;
         case 'mode':
-	  var mode = this.checkMode(gProp[p]);
+	  var mode = this._checkRenderMode(gProp[p]);
 	  if(mode) {
 	    itm[p] = mode;
 	  }
 	  break;
+	case 'vertices':
+	  itm[p] = gProp[p].slice(0);
+	  break;
+	case 'texture':
+	  itm[p] = gProp[p].slice(0);
+	  break;
         default:
 	  ok = false;
-	  console.log('MARenderer.makeRenderItem() unknown property: ' + p);
+	  console.log('MARenderer._makeRenderItem() unknown property: ' + p);
 	  break;
       }
     }
@@ -405,7 +729,14 @@ MARenderer = function(win, con) {
     return(itm);
   }
 
-  this.checkMode = function(gMode) {
+  /*!
+   * \class	MARenderer
+   * \function	_checkRenderMode
+   * \return	Given render mode or undefined if the render mode is invalid.
+   * \brief	Checks that the given render mode is valid.
+   * \param gMode	Given render mode.
+   */
+  this._checkRenderMode = function(gMode) {
     var rMode = undefined;
     if(gMode) {
       switch(Number(gMode)) {
@@ -415,6 +746,7 @@ MARenderer = function(win, con) {
 	case MARenderMode.PHONG:
 	case MARenderMode.EMISSIVE:
 	case MARenderMode.POINT:
+	case MARenderMode.SECTION:
 	  rMode = gMode;
 	  break;
 	default:
@@ -425,7 +757,15 @@ MARenderer = function(win, con) {
     return(rMode)
   }
 
-  this.makeMaterial = function(itm) {
+  /*!
+   * \class	MARenderer
+   * \function	_makeMaterial
+   * \return	New material.
+   * \brief	Makes a new material using the properties of the given render
+   * 		item.
+   * \param itm		Given render item.
+   */
+  this._makeMaterial = function(itm) {
     var mat;
     var sProp = {};
     switch(itm.mode) {
@@ -460,7 +800,7 @@ MARenderer = function(win, con) {
 	sProp['emissive'] = 0x000000;
 	sProp['shininess'] = 25;
 	sProp['transparent'] = itm.transparent;
-	this.setMaterialOpacity(sProp, itm.transparent, itm.opacity);
+	this._setMaterialOpacity(sProp, itm.transparent, itm.opacity);
 	mat = new THREE.MeshPhongMaterial(sProp);
 	break;
       case MARenderMode.EMISSIVE:
@@ -484,11 +824,24 @@ MARenderer = function(win, con) {
 	sProp['map'] = THREE.ImageUtils.loadTexture('textures/particle8.png');
 	mat = new THREE.PointCloudMaterial(sProp)
 	break;
+      case MARenderMode.SECTION:
+	sProp['color'] = itm.color;
+	sProp['wireframe'] = false;
+	sProp['side'] = THREE.DoubleSide;
+	sProp['opacity'] = itm.opacity;
+	mat = new THREE.MeshBasicMaterial(sProp);
+	break;
     }
     return(mat);
   }
 
-  this.computeCenter = function() {
+  /*!
+   * \class	MARenderer
+   * \function	_computeCenter
+   * \brief	Computes the scene centre and sets the camera trackball to
+   * 		view the centre.
+   */
+  this._computeCenter = function() {
     var n = 0;
     var box = new THREE.Box3();
     for(var i = 0, l = this.scene.children.length; i < l; i ++ ) {
@@ -547,7 +900,12 @@ MARenderer = function(win, con) {
     }
   }
 
-  this.testCode	= function() {
+  /*!
+   * \class	MARenderer
+   * \function	_testCode
+   * \brief	Prints debug output to the console.
+   */
+  this._testCode	= function() {
     console.log('ren.version = ' + self.version);
     console.log('ren.setCamera(new THREE.Vector3(' +
 		self.center.x + ', ' +
@@ -569,29 +927,12 @@ MARenderer = function(win, con) {
 		self.camera.up.z + '));');
   }
 
-  this.render = function() {
-    this.renderer.render(self.scene, self.camera);
-  }
-
-  this.animate = function() {
-    var aid = self.win.requestAnimationFrame(self.animate);
-    self.controls.update();
-    self.render();
-    if(++(self.animCount) > 400) {
-      self.win.cancelAnimationFrame(aid);
-    }
-  }
-
-
-  this.addEventListener = function(type, listener) {
-    this.eventHandler.addEventListener(type, listener)
-  }
-
-  this.removeEventListener = function(type, listener) {
-    this.eventHandler.removeEventListener(type, listener)
-  }
-
-  this.pick = function() {
+  /*!
+   * \class	MARenderer
+   * \function	_pick
+   * \brief	Performs picking and then dispatches a pick event.
+   */
+  this._pick = function() {
     var pos = this.mousePos;
     self.raycaster.setFromCamera(pos, self.camera);
     var isct = self.raycaster.intersectObjects(self.scene.children, false);
@@ -601,24 +942,27 @@ MARenderer = function(win, con) {
     }
   }
 
-  this.trackMouse = function(e) {
+  /*!
+   * \class 	MARenderer
+   * \function	_trackMouse
+   * \brief	Tracks the mouse position and resets the animation timer.
+   * \param e		The event.
+   */
+  this._trackMouse = function(e) {
     self.mousePos.x =  (e.clientX / self.win.innerWidth) *  2 - 1;
     self.mousePos.y = -(e.clientY / self.win.innerHeight) * 2 + 1;
     self.makeLive();
   }
 
-  this.makeLive = function() {
-    var count = this.animCount;
-    this.animCount = 0;
-    if(count > 200) {
-      this.animate();
-    }
-  }
-
-  this.keyPressed = function(e) {
+  /*! \class	MARenderer
+   * \function	_keyPressed
+   * \brief	Handles keypress events.
+   * \param e		The event.
+   */
+  this._keyPressed = function(e) {
     switch(e.charCode) {
       case 33: // ! Test code
-	self.testCode();
+	self._testCode();
         break;
       case 60: // < opacity down
 	self.opacityIncrement(-1);
@@ -627,7 +971,7 @@ MARenderer = function(win, con) {
 	self.opacityIncrement(1);
 	break;
       case 63: // ?
-	self.pick();
+	self._pick();
         break;
       case 67: // C
         self.setCamera();
@@ -646,10 +990,10 @@ MARenderer = function(win, con) {
 	self.pointSizeIncrement(-0.1);
         break;
       case 115: // s
-	self.updateAllMesh({mode: MARenderMode.PHONG});
+	self._updateAllMesh({mode: MARenderMode.PHONG});
         break;
       case 119: // w
-	self.updateAllMesh({mode: MARenderMode.WIREFRAME});
+	self._updateAllMesh({mode: MARenderMode.WIREFRAME});
         break;
       default:
         break;
@@ -657,16 +1001,16 @@ MARenderer = function(win, con) {
     console.log('MARender: charCode = ' + e.charCode);
   }
 
-  this.windowResize = function() {
+  /*!
+   * \class	MARenderer
+   * \function	_windowResize
+   * \brief	Handles window resize events.
+   */
+  this._windowResize = function() {
     self.camera.aspect = self.win.innerWidth / self.win.innerHeight;
     self.camera.updateProjectionMatrix();
     self.renderer.setSize(self.win.innerWidth, self.win.innerHeight);
     self.controls.handleResize();
     self.makeLive();
   }
-
-  this.getChildren = function() {
-    return this.scene.children;
-  }
-
 }
