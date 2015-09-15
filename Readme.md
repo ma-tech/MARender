@@ -18,7 +18,16 @@ and sections either from static images or from an IIP3D server
 
 Example
 <a
-href="https://github.com/ma-tech/MARender/blob/master/example/Minimal.html">source</a>
+href="https://github.com/ma-tech/MARender/blob/master/example/Minimal.html">
+source</a>
 and
 <a
-href="https://github.com/ma-tech/MARender/blob/master/example/minimal-screenshot.png">screenshot</a>.
+href="https://github.com/ma-tech/MARender/blob/master/example/minimal-screenshot.png">
+screenshot</a>.
+
+## Screenshots
+
+More
+<a
+href="https://github.com/ma-tech/MARender/blob/master/example/screenshots.html">
+screenshots</a>.
