@@ -21,4 +21,4 @@ Example
 href="https://github.com/ma-tech/MARender/blob/master/example/Minimal.html">source</a>
 and
 <a
-href="https://github.com/ma-tech/MARender/blob/master/example/Minimal.png">screenshot</a>.
+href="https://github.com/ma-tech/MARender/blob/master/example/minimal-screenshot.png">screenshot</a>.
