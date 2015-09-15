@@ -29,5 +29,5 @@ screenshot</a>.
 
 More
 <a
-href="https://github.com/ma-tech/MARender/blob/master/example/screenshots.html">
+href="https://github.com/ma-tech/MARender/blob/master/example/screenshots.png">
 screenshots</a>.
