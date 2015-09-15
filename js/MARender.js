@@ -634,8 +634,6 @@ MARenderer = function(win, con) {
 	break;
       case MARenderMode.SECTION:
 	{
-	  var tex = obj.material.map;
-	  var geom = this.makeSectionGeometry(itm.vertices);
 	  if(itm.texture) {
 	    THREE.ImageUtils.loadTexture(itm.texture,
 		THREE.UVMapping,
