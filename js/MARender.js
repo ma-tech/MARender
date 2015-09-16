@@ -362,6 +362,15 @@ MARenderer = function(win, con) {
 
   /*!
    * \class	MARenderer
+   * \function	getChildren
+   * \brief	Gets the children of the scene.
+   */
+  this.getChildren = function() {
+    return this.scene.children;
+  }
+
+  /*!
+   * \class	MARenderer
    * \function	opacityIncrement
    * \brief	Increments the opacity of all transparent models.
    * \param inc		Opacity increment which may be positive or
