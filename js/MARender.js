@@ -85,6 +85,7 @@ MARenderer = function(win, con) {
   this.animCount = 0;    // Used to count animation frames since mouse movement
   this.pointSize = 2;
   this.mousePos = new THREE.Vector2(0,0);
+  this.pickOfs = 0;
   this.nearPlane = 1;
   this.farPlane = 10000;
   this.setCamOnLoad = true;
@@ -129,6 +130,28 @@ MARenderer = function(win, con) {
     self.win.addEventListener('mousemove', self._trackMouse, false);
     self.win.addEventListener('keypress', self._keyPressed, false);
     self.win.addEventListener('resize', self._windowResize, false);
+  }
+
+  /*!
+   * \class     MARenderer
+   * \function	setPickOfs
+   * \brief	Adds an offset to the mouse coords to compensate for title
+   *            div above the canvas
+   * \param ofs	height of title div in pixels
+   */
+  this.setPickOfs = function(ofs) {
+
+     var iofs;
+     var innerH;
+
+     innerH = self.win.innerHeight;
+     //alert("innerH " + innerH);
+
+     if(ofs !== undefined) {
+        iofs = parseInt(ofs, 10);
+        self.pickOfs = (iofs / self.win.innerHeight) * 2;
+     }
+     //alert("pickOfs " + self.pickOfs);
   }
 
   /*!
@@ -941,6 +964,7 @@ MARenderer = function(win, con) {
    */
   this._pick = function() {
     var pos = this.mousePos;
+    pos.y = pos.y + self.pickOfs;
     self.raycaster.setFromCamera(pos, self.camera);
     var isct = self.raycaster.intersectObjects(self.scene.children, false);
     if(isct.length > 0) {
@@ -1020,4 +1044,5 @@ MARenderer = function(win, con) {
     self.controls.handleResize();
     self.makeLive();
   }
+
 }
