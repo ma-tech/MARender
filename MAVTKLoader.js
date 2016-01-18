@@ -1,5 +1,5 @@
 /*!*
-* \file         VTKLoader.js
+* \file         MAVTKLoader.js
 * \author       mrdoob, Bill Hill
 * \date         June 2015
 * \version      $Id$
@@ -7,7 +7,8 @@
 * 		loader by mrdoob. Differences (so far) from the original
 * 		are:
 * 		* slightly more flexible parsing
-* 		* polygons other than triangles are not supported
+* 		* polygons are optional and polygons other than triangles
+* 		  are not supported
 * 		* able to set color of materials attached to geometry
 * 		* bounding box and sphere set
 */
