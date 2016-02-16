@@ -187,6 +187,9 @@ MARenderer = function(win, con) {
 		if(mat) {
 		  switch(Number(itm.mode)) {
 		    case MARenderMode.POINT:
+		      if(geom.colors.length > 0) {
+                        mat.vertexColors = THREE.VertexColors;
+		      }
 		      var pcld = new THREE.PointCloud(geom, mat);
 		      pcld.name = itm.name;
 		      pcld.sortParticles = true;
