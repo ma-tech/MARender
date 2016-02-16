@@ -10,7 +10,7 @@ with particular emphasis on anatomy and mapped spatial data
 Typical uses combine surface, section and point cloud renderings. Surfaces
 and point clouds are most readily read from VTK format files using the
 modified VTK loader
-https://github.com/ma-tech/three.js/blob/master/examples/js/loaders/VTKLoader.js
+https://github.com/ma-tech/three.js/blob/master/examples/js/loaders/MAVTKLoader.js
 and sections either from static images or from an IIP3D server
 (https://github.com/ma-tech/WlzIIPSrv).
 
