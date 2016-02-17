@@ -72,7 +72,7 @@ MARenderItem = function() {
 MARenderer = function(win, con) {
   var self = this;
   this.type = 'MARenderer';
-  Object.defineProperty(self, 'version', {value: '1.2.2', writable: false});
+  Object.defineProperty(self, 'version', {value: '1.2.1', writable: false});
   this.win = win;
   this.con = con;
   this.scene;
@@ -848,14 +848,13 @@ MARenderer = function(win, con) {
 	break;
       case MARenderMode.POINT:
 	sProp['color'] = itm.color;
-	sProp['wireframe'] = false;
 	sProp['opacity'] = itm.opacity;
 	sProp['transparent'] = itm.transparent;
 	sProp['size'] = this.pointSize;
 	sProp['blending'] = THREE.AdditiveBlending;
-	sProp['alphaTest'] = 0.50;
+	sProp['alphaTest'] = 0.5;
 	sProp['map'] = THREE.ImageUtils.loadTexture('textures/particle8.png');
-	mat = new THREE.PointCloudMaterial(sProp)
+	mat = new THREE.PointCloudMaterial(sProp);
 	break;
       case MARenderMode.SECTION:
 	sProp['color'] = itm.color;
