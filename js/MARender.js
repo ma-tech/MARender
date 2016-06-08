@@ -59,6 +59,7 @@ MARenderItem = function() {
   this.mode             = MARenderMode.PHONG;
   this.vertices		= undefined;
   this.texture		= undefined;
+  this.visible          = true;
 }
 
 /*!
@@ -419,7 +420,6 @@ MARenderer = function(win, con) {
 	  } else {
 	    op /= 2.0;
 	  }
-	  child.visible = true;
 	  this._setMaterialOpacity(child.material, tr, op);
 	  child.material.needsUpdate = true;
           this.render();
@@ -635,6 +635,10 @@ MARenderer = function(win, con) {
       } else if(obj.material && obj.material.transparent) {
 	itm.transparent = obj.material.transparent;
       }
+      if(gProp['visible'] !== 'undefined') {
+	itm.visible = gProp['visible'];
+	obj.visible = itm.visible;
+      }
       if(gProp['texture']) {
 	itm.texture = gProp['texture'].slice(0);
       }
@@ -749,6 +753,9 @@ MARenderer = function(win, con) {
 	  break;
 	case 'texture':
 	  itm[p] = gProp[p].slice(0);
+	  break;
+	case 'visible':
+	  itm[p] = Boolean(gProp[p]);
 	  break;
         default:
 	  ok = false;
