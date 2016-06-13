@@ -54,12 +54,14 @@ MARenderItem = function() {
   this.name             = undefined;
   this.path             = undefined;
   this.color            = 0x000000;
+  this.side		= THREE.FrontSide;
   this.transparent      = false;
   this.opacity          = 1.0;
   this.mode             = MARenderMode.PHONG;
   this.vertices		= undefined;
   this.texture		= undefined;
   this.visible          = true;
+  this.clipplane        = undefined;
 }
 
 /*!
@@ -96,6 +98,11 @@ MARenderer = function(win, con) {
   this.homeUp   = new THREE.Vector3(0, 0, 1);
   this.homePos  = new THREE.Vector3(0, 0, 0);
   this.eventHandler = new THREE.EventDispatcher();
+  this.noClipPlanes = Object.freeze([]);
+  this.globalClipping = false;
+  this.globalClipPlanes = this.noClipPlanes;
+
+
   THREE.ImageUtils.crossOrigin = ''; // To allow CORS textures
 
   this.init = function() {
@@ -134,6 +141,58 @@ MARenderer = function(win, con) {
   }
 
   /*!
+   * \class	MARenderer
+   * \return	True if local clipping is on or false if it's off.
+   * \function	setClipping
+   * \brief	Sets the local (per model) clipping on or off.
+   */
+  this.setLocalClipping = function(state) {
+    self.renderer.localClippingEnabled = Boolean(state);
+  }
+
+  /*!
+   * \class	MARenderer
+   * \function	setClipping
+   * \brief	Gets the state of local (per model) clipping (on or off).
+   * \param state	Local clipping on if true or off if false.
+   */
+  this.getLocalClipping = function() {
+    return(self.renderer.localClippingEnabled);
+  }
+
+  /*!
+   * \class	MARenderer
+   * \function	setClipping
+   * \brief	Sets the global clipping plane on or off.
+   * \param state	Clipping plane on if true or off if false.
+   */
+  this.setGlobalClipping = function(state) {
+    self.globalClipping = Boolean(state);
+    if(self.globalClipping) {
+      self.renderer.clippingPlanes = this.globalClipPlanes;
+    } else {
+      self.renderer.clippingPlanes = this.noClipPlanes;
+    }
+    this.render();
+  }
+
+  /*!
+   * \class	MARenderer
+   * \function	setClipping
+   * \brief	Sets the global clipping plane.
+   * \param pln		New clipping plane.
+   */
+  this.setGlobalClipPlane = function(pln) {
+    if(Boolean(pln) && (pln instanceof THREE.Plane)) {
+      self.globalClipPlanes = [pln];
+      if(self.globalClipping) {
+        self.renderer.clippingPlanes = self.globalClipPlanes;
+      }
+      this.render();
+    }
+  }
+
+  /*!
    * \class     MARenderer
    * \function	setPickOfs
    * \brief	Adds an offset to the mouse coords to compensate for title
@@ -146,13 +205,10 @@ MARenderer = function(win, con) {
      var innerH;
 
      innerH = self.win.innerHeight;
-     //alert("innerH " + innerH);
-
      if(ofs !== undefined) {
         iofs = parseInt(ofs, 10);
         self.pickOfs = (iofs / self.win.innerHeight) * 2;
      }
-     //alert("pickOfs " + self.pickOfs);
   }
 
   /*!
@@ -290,12 +346,53 @@ MARenderer = function(win, con) {
     geom.faceVertexUvs[0] = [[new THREE.Vector2(0, 0),
 			      new THREE.Vector2(1, 0),
 			      new THREE.Vector2(1, 1)],
-			    [new THREE.Vector2(1, 1),
-			     new THREE.Vector2(0, 1),
-			     new THREE.Vector2(0, 0)]];
+			     [new THREE.Vector2(1, 1),
+			      new THREE.Vector2(0, 1),
+			      new THREE.Vector2(0, 0)]];
     geom.computeFaceNormals();
     geom.computeBoundingBox();
     return(geom);
+  }
+
+  /*!
+   * \class	MARenderer
+   * \function	makePlaneFromAngles
+   * \return	New plane.
+   * \brief	Create a plane using sectioning angles, a fixed point
+   * 		and a distance from the fixed point ass as used in
+   * 		Woolz and WlzIIPSrv.
+   * \param pitch	Pitch angle.
+   * \param yaw		Yaw angle.
+   * \param fixed 	Fixed point.
+   * \param dst		Prependicular distance from the fixed point to the
+   * 			plane.
+   */
+  this.makePlaneFromAngles = function(pit, yaw, fxd, dst) {
+    var cp = Math.cos(pit);
+    var cy = Math.cos(yaw);
+    var sp = Math.sin(pit);
+    var sy = Math.sin(yaw);
+    var nrm = new THREE.Vector3(sp * cy, sp * sy, cp);
+    dst += (fxd.x * nrm.x) + (fxd.y * nrm.y) + (fxd.z * nrm.z);
+    var pln = new THREE.Plane(nrm, -dst);
+    return(pln);
+  }
+
+  /*!
+   * \class	MARenderer
+   * \function	makePlaneFromVertices
+   * \return	New plane.
+   * \brief	Create a plane using the first three vertices of the given
+   * 		array of 3D vertices.
+   * \param vtx		Array of vertices.
+   */
+  this.makePlaneFromVertices = function(vtx) {
+    var pln;
+    if(vtx && (vtx instanceof Array) && (vtx.length >= 3)) {
+      var pln = new THREE.Plane();
+      pln.setFromCoplanarPoints (vtx[0], vtx[1], vtx[2]);
+    }
+    return(pln);
   }
 
   /*!
@@ -592,7 +689,6 @@ MARenderer = function(win, con) {
     if(mat && tr) {
       if(op < 0.01) {
 	mat['opacity'] = 0.0;
-	mat['visible'] = false;
       } else {
 	if(op > 1.0) {
 	  op = 1.0;
@@ -603,7 +699,6 @@ MARenderer = function(win, con) {
 	  mat['depthWrite'] = true;
 	}
 	mat['opacity'] = op;
-	mat['visible'] = true;
       }
       this.render();
     }
@@ -625,19 +720,35 @@ MARenderer = function(win, con) {
       } else if(obj.material && obj.material.color) {
 	itm.color = obj.material.color;
       }
+      if(gProp['clipping'] !== undefined) {
+        if(gProp['clipping'] instanceof THREE.Plane) {
+	  var pln = new THREE.Plane().copy(gProp['clipping']);
+	  itm.clipping = [ pln ];
+        } else {
+	  itm.clipping = this.noClipPlanes;
+	}
+      } else if(obj.material) {
+	itm.clipping = obj.material.clippingPlanes;
+      }
       if(gProp['opacity']) {
 	itm.opacity = gProp['opacity'];
       } else if(obj.material && obj.material.opacity) {
 	itm.opacity = obj.material.opacity;
       }
-      if(gProp['transparent']) {
+      if(gProp['transparent'] !== undefined) {
 	itm.transparent = gProp['transparent'];
       } else if(obj.material && obj.material.transparent) {
 	itm.transparent = obj.material.transparent;
       }
-      if(gProp['visible'] !== 'undefined') {
+      if(gProp['side'] !== undefined) {
+	itm.side = gProp['side'];
+      } else if(obj.material) {
+        itm.side = obj.material.side;
+      }
+      if(gProp['visible'] !== undefined) {
 	itm.visible = gProp['visible'];
-	obj.visible = itm.visible;
+      } else if(obj.material) {
+        itm.visible = obj.material.visible;
       }
       if(gProp['texture']) {
 	itm.texture = gProp['texture'].slice(0);
@@ -654,6 +765,8 @@ MARenderer = function(win, con) {
       } else {
         if(obj.type === 'PointCloud') {
 	  itm.mode = MARenderMode.POINT;
+	} else if(obj.material && (obj.material.map)) {
+	  itm.mode = MARenderMode.SECTION;
 	}
       }
     }
@@ -733,10 +846,14 @@ MARenderer = function(win, con) {
       switch(p) {
         case 'name':
         case 'path':
+	case 'side':
           itm[p] = gProp[p];
           break;
         case 'color':
         case 'opacity':
+	case 'pitch':
+	case 'yaw':
+	case 'dist':
 	  itm[p] = Number(gProp[p]);
           break;
         case 'transparent':
@@ -756,6 +873,14 @@ MARenderer = function(win, con) {
 	  break;
 	case 'visible':
 	  itm[p] = Boolean(gProp[p]);
+	  break;
+	case 'clipping':
+	  if(gProp[p] && (gProp[p] instanceof THREE.Plane)) {
+	    var pln = new THREE.Plane().copy(gProp[p]);
+	    itm.clipping = [ pln ];
+	  } else {
+	    itm.clipping = this.noClipPlanes;
+	  }
 	  break;
         default:
 	  ok = false;
@@ -811,63 +936,87 @@ MARenderer = function(win, con) {
     switch(itm.mode) {
       case MARenderMode.BASIC:
 	sProp['color'] = itm.color;
+	sProp['visible'] = itm.visible;
+	sProp['clippingPlanes'] = itm.clipping;
 	sProp['wiretrame'] = false;
 	mat = new THREE.MeshBasicMaterial(sProp);
 	break;
       case MARenderMode.WIREFRAME:
 	sProp['color'] = itm.color;
+	sProp['opacity'] = itm.opacity;
+	sProp['visible'] = itm.visible;
+	sProp['clippingPlanes'] = itm.clipping;
+	sProp['transparent'] = itm.transparent;
 	sProp['wireframe'] = true;
 	sProp['wireframeLinewidth'] = 1;
-	sProp['opacity'] = itm.opacity;
-	sProp['transparent'] = itm.transparent;
 	mat = new THREE.MeshLambertMaterial(sProp);
 	break;
       case MARenderMode.LAMBERT:
 	sProp['color'] = itm.color;
+	sProp['opacity'] = itm.opacity;
+	sProp['visible'] = itm.visible;
+	sProp['clippingPlanes'] = itm.clipping;
+	sProp['transparent'] = itm.transparent;
 	sProp['wireframe'] = false;
+	sProp['side'] = itm.side;
 	/* Use single sided, surfaces may need normals flipping
 	 * sProp['side'] = THREE.DoubleSide; */
-	sProp['opacity'] = itm.opacity;
-	sProp['transparent'] = itm.transparent;
 	mat = new THREE.MeshLambertMaterial(sProp);
 	break;
       case MARenderMode.PHONG:
 	sProp['color'] = itm.color;
+	sProp['opacity'] = itm.opacity;
+	sProp['visible'] = itm.visible;
+	sProp['clippingPlanes'] = itm.clipping;
+	sProp['transparent'] = itm.transparent;
 	sProp['specular'] = 0x111111;
 	sProp['wireframe'] = false;
 	/* Use single sided, surfaces may need normals flipping
 	 * sProp['side'] = THREE.DoubleSide; */
+	sProp['side'] = itm.side;
 	sProp['emissive'] = 0x000000;
 	sProp['shininess'] = 25;
-	sProp['transparent'] = itm.transparent;
 	this._setMaterialOpacity(sProp, itm.transparent, itm.opacity);
 	mat = new THREE.MeshPhongMaterial(sProp);
 	break;
       case MARenderMode.EMISSIVE:
 	sProp['color'] = itm.color;
+	sProp['opacity'] = itm.opacity;
+	sProp['visible'] = itm.visible;
+	sProp['clippingPlanes'] = itm.clipping;
+	sProp['transparent'] = itm.transparent;
 	sProp['specular'] =0x777777;
 	sProp['wireframe'] = false;
-	sProp['opacity'] = itm.opacity;
 	sProp['emissive'] = itm.color;
-	sProp['transparent'] = itm.transparent;
 	sProp['shininess'] = 15;
+	sProp['side'] = itm.side;
 	mat = new THREE.MeshPhongMaterial(sProp);
 	break;
       case MARenderMode.POINT:
 	sProp['color'] = itm.color;
-	sProp['opacity'] = itm.opacity;
+	sProp['visible'] = itm.visible;
 	sProp['transparent'] = itm.transparent;
+	sProp['clippingPlanes'] = itm.clipping;
 	sProp['size'] = this.pointSize;
-	sProp['blending'] = THREE.AdditiveBlending;
-	sProp['alphaTest'] = 0.5;
-	sProp['map'] = THREE.ImageUtils.loadTexture('textures/particle8.png');
+	sProp['alphaTest'] = 0.2;
+	/* This is a circular spot in 8x8 image with an alpha channel. */
+	sProp['map'] = THREE.ImageUtils.loadTexture('data:image/png;base64,' +
+	'iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAQAAABuBnYAAAAAAmJLR0QA/4eP' +
+	'zL8AAAAJcEhZcwAACxMAAAsTAQCanBgAAAAHdElNRQfgAg8MNSkRqlGqAAAA' +
+	'VElEQVQI113NQQ0DIRBA0TcEFYQTSVWsAHRUWXUgoDY4bbAxPfS2X8D7ATk1' +
+	'nFhU8u0ysLPFp+Z0mTpe5CmaoYNuaMWj4thucNtOjZWNP+obK57bH17lGKmO' +
+	'V2FkAAAAAElFTkSuQmCC');
 	mat = new THREE.PointCloudMaterial(sProp);
 	break;
       case MARenderMode.SECTION:
 	sProp['color'] = itm.color;
+	sProp['opacity'] = itm.opacity;
+	sProp['transparent'] = itm.transparent;
+	sProp['visible'] = itm.visible;
+	sProp['clippingPlanes'] = itm.clipping;
 	sProp['wireframe'] = false;
 	sProp['side'] = THREE.DoubleSide;
-	sProp['opacity'] = itm.opacity;
+	sProp['alphaTest'] = 0.5;
 	mat = new THREE.MeshBasicMaterial(sProp);
 	break;
     }
