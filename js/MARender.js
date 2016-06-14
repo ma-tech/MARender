@@ -54,7 +54,8 @@ MARenderItem = function() {
   this.name             = undefined;
   this.path             = undefined;
   this.color            = 0x000000;
-  this.side		= THREE.FrontSide;
+  this.side		= THREE.FrontSide; /* Double sided can cause artifacts
+                                              so only use if needed. */
   this.transparent      = false;
   this.opacity          = 1.0;
   this.mode             = MARenderMode.PHONG;
@@ -346,9 +347,9 @@ MARenderer = function(win, con) {
     geom.faceVertexUvs[0] = [[new THREE.Vector2(0, 0),
 			      new THREE.Vector2(1, 0),
 			      new THREE.Vector2(1, 1)],
-			     [new THREE.Vector2(1, 1),
-			      new THREE.Vector2(0, 1),
-			      new THREE.Vector2(0, 0)]];
+			    [new THREE.Vector2(1, 1),
+			     new THREE.Vector2(0, 1),
+			     new THREE.Vector2(0, 0)]];
     geom.computeFaceNormals();
     geom.computeBoundingBox();
     return(geom);
@@ -561,7 +562,7 @@ MARenderer = function(win, con) {
       var child = this.scene.children[i];
       if(child && (child.type === 'PointCloud')) {
         if(child.material && child.material.size) {
-	  child.material.size += inc;
+	  child.material.size *= 1.0 + inc;
 	  if(child.material.size > 99.9) {
 	    child.material.size = 99.9;
 	  }
@@ -959,8 +960,6 @@ MARenderer = function(win, con) {
 	sProp['transparent'] = itm.transparent;
 	sProp['wireframe'] = false;
 	sProp['side'] = itm.side;
-	/* Use single sided, surfaces may need normals flipping
-	 * sProp['side'] = THREE.DoubleSide; */
 	mat = new THREE.MeshLambertMaterial(sProp);
 	break;
       case MARenderMode.PHONG:
@@ -971,8 +970,6 @@ MARenderer = function(win, con) {
 	sProp['transparent'] = itm.transparent;
 	sProp['specular'] = 0x111111;
 	sProp['wireframe'] = false;
-	/* Use single sided, surfaces may need normals flipping
-	 * sProp['side'] = THREE.DoubleSide; */
 	sProp['side'] = itm.side;
 	sProp['emissive'] = 0x000000;
 	sProp['shininess'] = 25;
@@ -998,8 +995,11 @@ MARenderer = function(win, con) {
 	sProp['transparent'] = itm.transparent;
 	sProp['clippingPlanes'] = itm.clipping;
 	sProp['size'] = this.pointSize;
-	sProp['alphaTest'] = 0.2;
-	/* This is a circular spot in 8x8 image with an alpha channel. */
+	sProp['blending'] = THREE.CustomBlending;
+	sProp['blendSrc'] = THREE.DstAlphaFactor;
+	sProp['blendDst'] = THREE.DstColorFactor;
+	sProp['blendEquation'] = THREE.MaxEquation;
+	sProp['alphaTest'] = 0.5;
 	sProp['map'] = THREE.ImageUtils.loadTexture('data:image/png;base64,' +
 	'iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAQAAABuBnYAAAAAAmJLR0QA/4eP' +
 	'zL8AAAAJcEhZcwAACxMAAAsTAQCanBgAAAAHdElNRQfgAg8MNSkRqlGqAAAA' +
@@ -1012,11 +1012,11 @@ MARenderer = function(win, con) {
 	sProp['color'] = itm.color;
 	sProp['opacity'] = itm.opacity;
 	sProp['transparent'] = itm.transparent;
+	sProp['alphaTest'] = 0.2;
 	sProp['visible'] = itm.visible;
 	sProp['clippingPlanes'] = itm.clipping;
 	sProp['wireframe'] = false;
 	sProp['side'] = THREE.DoubleSide;
-	sProp['alphaTest'] = 0.5;
 	mat = new THREE.MeshBasicMaterial(sProp);
 	break;
     }
@@ -1173,10 +1173,10 @@ MARenderer = function(win, con) {
 	self.goHome();
         break;
       case 112: // p
-	self.pointSizeIncrement(+0.1);
+	self.pointSizeIncrement(+0.2);
         break;
       case 113: // q
-	self.pointSizeIncrement(-0.1);
+	self.pointSizeIncrement(-0.2);
         break;
       case 115: // s
 	self._updateAllMesh({mode: MARenderMode.PHONG});
