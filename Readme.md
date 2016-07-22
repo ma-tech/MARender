@@ -14,9 +14,9 @@ https://github.com/ma-tech/three.js/blob/master/examples/js/loaders/MAVTKLoader.
 and sections either from static images or from an IIP3D server
 (https://github.com/ma-tech/WlzIIPSrv).
 
-## Minimal Example
+## Examples
 
-Example
+A Minimal Example
 <a
 href="https://github.com/ma-tech/MARender/blob/master/example/Minimal.html">
 source</a>
@@ -24,6 +24,12 @@ and
 <a
 href="https://github.com/ma-tech/MARender/blob/master/example/minimal-screenshot.png">
 screenshot</a>.
+
+A
+<a
+href="http://aberlour.hgu.mrc.ac.uk/MARenderTests/visabilitytest.html">
+more complex example</a>
+showing IIP3D integration, surfaces, point clouds and arbitrary sectioning.
 
 ## Screenshots
 
