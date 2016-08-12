@@ -65,6 +65,15 @@ MARenderItem = function() {
   this.clipplane        = undefined;
 }
 
+/**
+* Enough of a camera state to restore position.
+*/
+MARenderCameraState = function() {
+  this.up  = new THREE.Vector3(0, 0, 1);
+  this.pos = new THREE.Vector3(0, 0, 0);
+  this.target = new THREE.Vector3(0, 0, 0);
+}
+
 /*!
 * \class	MARenderer
 * \constructor
@@ -76,7 +85,7 @@ MARenderItem = function() {
 MARenderer = function(win, con) {
   var self = this;
   this.type = 'MARenderer';
-  Object.defineProperty(self, 'version', {value: '1.2.3', writable: false});
+  Object.defineProperty(self, 'version', {value: '1.2.4', writable: false});
   this.win = win;
   this.con = con;
   this.scene;
@@ -84,7 +93,7 @@ MARenderer = function(win, con) {
   this.dirLight;
   this.pntLight;
   this.camera;
-  this.controls;
+  this.cameraControls;
   this.renderer;
   this.animCount = 0;    // Used to count animation frames since mouse movement
   this.pointSize = 2;
@@ -94,10 +103,12 @@ MARenderer = function(win, con) {
   this.farPlane = 10000;
   this.setCamOnLoad = true;
   this.setHomeOnLoad = true;
+  this.useCameraControl = true;
+  this.conOffset = new THREE.Vector2(0,0);
   this.cameraPos = new THREE.Vector3(0, 0, 10000);
   this.center   = new THREE.Vector3(0, 0, 0);
-  this.homeUp   = new THREE.Vector3(0, 0, 1);
-  this.homePos  = new THREE.Vector3(0, 0, 0);
+  this.homeCameraView = new MARenderCameraState();
+  this.saveCameraView = new MARenderCameraState();
   this.eventHandler = new THREE.EventDispatcher();
   this.noClipPlanes = Object.freeze([]);
   this.globalClipping = false;
@@ -110,17 +121,16 @@ MARenderer = function(win, con) {
 
     this.scene = new THREE.Scene();
 
+    this.setConOffset();
     this.camera = new THREE.PerspectiveCamera(25,
-				   this.win.innerWidth / this.win.innerHeight,
+				   this.con.clientWidth / this.con.clientHeight,
 				   this.nearPlane, this.farPlane);
 
     this.camera.updateProjectionMatrix();
-    this.controls = new THREE.TrackballControls(this.camera);
-    this.controls.panSpeed = 0.3;
-    this.controls.dynamicDampingFactor = 0.7;
+    this.cameraControls = this._makeCameraControls();
 
     this.renderer = new THREE.WebGLRenderer({antialias: true});
-    this.renderer.setSize(this.win.innerWidth, this.win.innerHeight);
+    this.renderer.setSize(this.con.clientWidth, this.con.clientHeight);
     this.con.appendChild(this.renderer.domElement);
 
     this.scene.add(this.camera);
@@ -197,7 +207,7 @@ MARenderer = function(win, con) {
    * \class     MARenderer
    * \function	setPickOfs
    * \brief	Adds an offset to the mouse coords to compensate for title
-   *            div above the canvas
+   *            div above the canvas. For backwards compatability only.
    * \param ofs	height of title div in pixels
    */
   this.setPickOfs = function(ofs) {
@@ -381,6 +391,23 @@ MARenderer = function(win, con) {
 
   /*!
    * \class	MARenderer
+   * \function	setConOffset
+   * \brief	Sets the offset of the container from the window.
+   */
+  this.setConOffset = function() {
+    var c = self.con;
+    var o = new THREE.Vector2(0, 0);
+    while(c) {
+      o.x += c.offsetLeft;
+      o.y += c.offsetTop;
+      c = c.offsetParent;
+    }
+    self.conOffset.copy(o);
+  }
+
+
+  /*!
+   * \class	MARenderer
    * \function	makePlaneFromVertices
    * \return	New plane.
    * \brief	Create a plane using the first three vertices of the given
@@ -439,18 +466,20 @@ MARenderer = function(win, con) {
    * 			camera trackball up vector.
    */
   this.setHome = function(pos, up) {
-    if(pos || up) {
-      this.setHomeOnLoad = false;
+    if(this.cameraControls) {
+      if(pos || up) {
+	this.setHomeOnLoad = false;
+      }
+      if(pos === undefined) {
+	pos = this.cameraControls.object.position.clone();
+      }
+      if(up === undefined) {
+	up = this.cameraControls.object.up.clone();
+      }
+      this.homeCameraView.up.copy(up);
+      this.homeCameraView.pos.copy(pos);
+      this.goHome();
     }
-    if(pos === undefined) {
-      pos = this.controls.object.position.clone();
-    }
-    if(up === undefined) {
-      up = this.controls.object.up.clone();
-    }
-    this.homeUp.copy(up);
-    this.homePos.copy(pos);
-    this.goHome();
   }
 
   /*!
@@ -459,10 +488,12 @@ MARenderer = function(win, con) {
    * \brief	Moves the camera trackball to the current home position.
    */
   this.goHome = function() {
-    this.controls.up0.copy(this.homeUp);
-    this.controls.position0.copy(this.homePos);
-    this.controls.target0.copy(this.center);
-    this.controls.reset();
+    if(this.cameraControls) {
+      this.cameraControls.up0.copy(this.homeCameraView.up);
+      this.cameraControls.position0.copy(this.homeCameraView.pos);
+      this.cameraControls.target0.copy(this.center);
+      this.cameraControls.reset();
+    }
   }
 
   /*!
@@ -587,6 +618,43 @@ MARenderer = function(win, con) {
 
   /*!
    * \class	MARenderer
+   * \function	setCameraControl
+   * \brief	Sets camera control by the trackball on or off.
+   */
+  this.setCameraControl = function(state) {
+    var newState = Boolean(state);
+    if(newState != this.useCameraControl) {
+      if(this.useCameraControl) {
+	if(this.cameraControls) {
+	  this.saveCameraView.up.copy(this.cameraControls.object.up.clone());
+	  this.saveCameraView.pos.copy(
+		  this.cameraControls.object.position.clone());
+	  this.saveCameraView.target.copy(this.center);
+	  this.cameraControls.enabled = false;
+	}
+      } else {
+	//this.cameraControls = this._makeCameraControls();
+	this.cameraControls.enabled = true;
+	this.cameraControls.up0.copy(this.saveCameraView.up);
+	this.cameraControls.position0.copy(this.saveCameraView.pos);
+	this.cameraControls.target0.copy(this.saveCameraView.target);
+	this.cameraControls.reset();
+      }
+      this.useCameraControl = newState;
+    }
+  }
+
+  /*!
+   * \class	MARenderer
+   * \function	setCameraControl
+   * \brief	Gets camera control by the trackball state.
+   */
+  this.getCameraControl = function() {
+    return(this.useCameraControl);
+  }
+
+  /*!
+   * \class	MARenderer
    * \function	animate
    * \brief	Starts rendering the scene. The rendering will be repeated
    * 		under the control of a timer and following mouse movement
@@ -594,7 +662,9 @@ MARenderer = function(win, con) {
    */
   this.animate = function() {
     var aid = self.win.requestAnimationFrame(self.animate);
-    self.controls.update();
+    if(self.useCameraControl && self.cameraControls) {
+      self.cameraControls.update();
+    }
     self.render();
     if(++(self.animCount) > 400) {
       self.win.cancelAnimationFrame(aid);
@@ -675,6 +745,19 @@ MARenderer = function(win, con) {
       }
     }
     return(vtx);
+  }
+
+  /*!
+   * \class	MARenderer
+   * \return	New camera controls.
+   * \function	_makeCameraControls
+   * \brief	Initialises the camera trackball controls.
+   */
+  this._makeCameraControls = function() {
+    var cc = new THREE.TrackballControls(this.camera, this.con);
+    cc.panSpeed = 0.3;
+    cc.dynamicDampingFactor = 0.7;
+    return(cc);
   }
 
   /*!
@@ -787,6 +870,8 @@ MARenderer = function(win, con) {
 	break;
       case MARenderMode.SECTION:
 	{
+	  obj.material.visible = itm.visible;
+	  obj.material.opacity = itm.opacity;
 	  if(itm.texture) {
 	    THREE.ImageUtils.loadTexture(itm.texture,
 		THREE.UVMapping,
@@ -1095,6 +1180,20 @@ MARenderer = function(win, con) {
    */
   this._testCode	= function() {
     console.log('ren.version = ' + self.version);
+    console.log('cen = (' +
+		self.center.x + ', ' +
+		self.center.y + ', ' +
+		self.center.z + ')');
+    console.log('near = ' + self.nearPlane);
+    console.log('far = ' + self.farPlane);
+    console.log('pos = ' + 
+                 self.camera.position.x + ', ' +
+		 self.camera.position.y + ', ' +
+		 self.camera.position.z + ')');
+    console.log('up = (' + 
+		self.camera.up.x + ', ' +
+		self.camera.up.y + ', ' +
+		self.camera.up.z + ')');
     console.log('ren.setCamera(new THREE.Vector3(' +
 		self.center.x + ', ' +
 		self.center.y + ', ' +
@@ -1106,13 +1205,15 @@ MARenderer = function(win, con) {
 		self.camera.position.y + ', ' +
 		self.camera.position.z + '));\n' +
                 'ren.setHome(new THREE.Vector3(' +
-		self.controls.object.position.x + ', ' +
-		self.controls.object.position.y + ', ' +
-		self.controls.object.position.z + '), ' +
+		self.cameraControls.object.position.x + ', ' +
+		self.cameraControls.object.position.y + ', ' +
+		self.cameraControls.object.position.z + '), ' +
 		'new THREE.Vector3(' +
 		self.camera.up.x + ', ' +
 		self.camera.up.y + ', ' +
 		self.camera.up.z + '));');
+    console.log('mousePos = (' + self.mousePos.x +
+                          ', ' + self.mousePos.y + ')');
   }
 
   /*!
@@ -1138,8 +1239,10 @@ MARenderer = function(win, con) {
    * \param e		The event.
    */
   this._trackMouse = function(e) {
-    self.mousePos.x =  (e.clientX / self.win.innerWidth) *  2 - 1;
-    self.mousePos.y = -(e.clientY / self.win.innerHeight) * 2 + 1;
+    self.mousePos.x =  ((e.clientX - self.conOffset.x) /
+                        self.con.clientWidth) *  2 - 1;
+    self.mousePos.y = -((e.clientY - self.conOffset.y) /
+                        self.con.clientHeight) * 2 + 1;
     self.makeLive();
   }
 
@@ -1196,10 +1299,13 @@ MARenderer = function(win, con) {
    * \brief	Handles window resize events.
    */
   this._windowResize = function() {
-    self.camera.aspect = self.win.innerWidth / self.win.innerHeight;
+    self.setConOffset();
+    self.camera.aspect = self.con.clientWidth / self.con.clientHeight;
     self.camera.updateProjectionMatrix();
-    self.renderer.setSize(self.win.innerWidth, self.win.innerHeight);
-    self.controls.handleResize();
+    self.renderer.setSize(self.con.clientWidth, self.con.clientHeight);
+    if(self.cameraControls) {
+      self.cameraControls.handleResize();
+    }
     self.makeLive();
   }
 
