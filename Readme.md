@@ -33,7 +33,12 @@ showing IIP3D integration, surfaces, point clouds and arbitrary sectioning.
 
 ## Screenshots
 
-More
+More screenshots: 
 <a
-href="https://github.com/ma-tech/MARender/blob/master/example/screenshots.png">
-screenshots</a>.
+href="https://github.com/ma-tech/MARender/blob/master/example/screenshot-01.png">
+01</a>
+ and 
+<a
+href="https://github.com/ma-tech/MARender/blob/master/example/screenshot-02.png">
+02</a>
+.
