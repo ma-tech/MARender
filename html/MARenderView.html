@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<!---
+* \file         MARenderView.html
+* \author       Bill Hill
+* \date         August 2016
+* \version      $Id$
+* \par
+* Address:
+*               MRC Human Genetics Unit,
+*               MRC Institute of Genetics and Molecular Medicine,
+*               University of Edinburgh,
+*               Western General Hospital,
+*               Edinburgh, EH4 2XU, UK.
+* \par
+* Copyright (C), [2016],
+* The University Court of the University of Edinburgh,
+* Old College, Edinburgh, UK.
+* 
+* This program is free software; you can redistribute it and/or
+* modify it under the terms of the GNU General Public License
+* as published by the Free Software Foundation; either version 2
+* of the License, or (at your option) any later version.
+*
+* This program is distributed in the hope that it will be
+* useful but WITHOUT ANY WARRANTY; without even the implied
+* warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+* PURPOSE.  See the GNU General Public License for more
+* details.
+*
+* You should have received a copy of the GNU General Public
+* License along with this program; if not, write to the Free
+* Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+* Boston, MA  02110-1301, USA.
+* \brief	A fairly simple surface and section viewer application
+*               based on MARender, which itself is based on three.js
+*               and IIP3D. The viewer reads it's configuration from the
+*               applicaton href.
+--->
+<html lang="en">
+<head>
+<title>MARenderView</title>
+<meta charset="utf-8">
+<style>
+body {
+  font-family      : Monospace;
+  background-color : #000;
+  color            : #fff;
+  margin           : 0px;
+  overflow         : hidden;
+}
+#info {
+  color            : #fff;
+  position         : absolute;
+  top              : 10px;
+  width            : 100%;
+  text-align       : center;
+  z-index          : 100;
+  display          : block;
+}
+#controls {
+  color            : #aaa;
+  width            : 400px;
+  position         : absolute;
+  top              : 10px;
+  text-align       : left;
+  z-index          : 100;
+  display          : block;
+}
+#three {
+  position         : absolute;
+  top              : 0px;
+  left             : 0px;
+  width            : 100%;
+  height           : 100%;
+}
+</style>
+</head>
+
+<body>
+<div id="info">
+info
+</div>
+
+<div id="controls">
+   <fieldset>
+     <legend>Render Controls</legend>
+     <label>
+       <input type="checkbox"
+	      id = "outerSurfaceVisible"
+	      onclick="setOuterSurfVisible(this.checked)"/>
+       Outer Surface Visible
+     </label>
+     <br>
+     <label>
+       <input type="checkbox"
+	      id = "sectionVisible"
+	      onclick="setSectionVisible(this.checked)"/>
+       Section Visible
+     </label>
+     <br>
+     <label>
+       <input type="checkbox"
+	      id = "sectionClipping"
+	      onclick="setSectionClip(this.checked)"/>
+       Section Clipping
+     </label>
+     <br>
+     <label>
+       <input type="checkbox"
+	      id = "domainSurfaces"
+	      onclick="setDomainSurfVisible(this.checked);"/>
+       Domain Surfaces
+     </label>
+     <br>
+     <label>
+       <input type="checkbox"
+	      id = "sectionDomains"
+	      onclick="setSectionDomainVisible(this.checked);"/>
+       Section Domains
+     </label>
+     <br><br>
+     <label>
+       <input type="range"
+	      id = "dstSlider"
+	      min="-1000"
+	      max="1000"
+	      step="1"
+	      value="0"
+	      oninput="updateDst(this.value, false)"
+	      onmouseup="updateDst(this.value, true)">
+       <input type="number"
+	      id = "dstValue"
+	      min="-1000"
+	      max="1000"
+	      step="1"
+	      style="width: 5em;"
+	      value="0"
+	      onchange="updateDst(this.value, true)">
+       Distance
+     </label>
+     <br>
+     <label>
+       <input type="range"
+	      id = "pitSlider"
+	      min="0.0"
+	      max="179.9"
+	      step="1"
+	      value="0"
+	      oninput="updatePit(this.value, false)"
+	      onmouseup="updatePit(this.value, true)">
+       <input type="number"
+	      id = "pitValue"
+	      min="0"
+	      max="179.9"
+	      step="0.1"
+	      style="width: 5em;"
+	      value="0"
+	      onchange="updatePit(this.value, true)">
+       Pitch
+     </label>
+     <br>
+     <label>
+       <input type="range"
+	      id = "yawSlider"
+	      min="0"
+	      max="359.9"
+	      step="1"
+	      value="0"
+	      oninput="updateYaw(this.value, false)"
+	      onmouseup="updateYaw(this.value, true)">
+       <input type="number"
+	      id = "yawValue"
+	      min="0"
+	      max="359.9"
+	      step="0.1"
+	      style="width: 5em;"
+	      value="0"
+	      onchange="updateYaw(this.value, true)">
+       Yaw
+     </label>
+     <br>
+     <label>
+       <input type="checkbox"
+	      id = "flipSection"
+	      onclick="setFlipSection(this.checked);"/>
+       Flip section
+     </label>
+     <br><br>
+     <label>
+       <input type="button"
+              id = "share"
+	      value = "Share view"
+	      onclick="shareView();"/>
+     </label>
+     <br><br>
+     <div id="presets">
+     </div>
+   </fieldset>
+</div>
+
+<div id="three">
+</div>
+
+<script src="js/three.min.js"></script>
+<script src="js/TrackballControls.js"></script>
+<script src="js/STLLoader.js"></script>
+<script src="js/MAVTKLoader.js"></script>
+<script src="js/Detector.js"></script>
+<script src="js/MARender.js"></script>
+
+<script>
+
+var rc;
+var sv;
+var ren;
+var url;
+var config;
+
+RenderControls = function() {
+  var sectionVisible;
+  var sectionClip;
+  var sectionControls;
+  var outerSurfVisible;
+  var domainSurfVisible;
+  var sectionDomainVisible;
+}
+
+setRenderControls = function(o) {
+  o.sectionVisible = true;
+  o.sectionClip = true;
+  o.sectionControls = false;
+  o.outerSurfVisible = true;
+  o.domainSurfVisible = true;
+  o.sectionDomainVisible = true;
+}
+
+SectionView = function() {
+  var dst;
+  var pit;
+  var yaw;
+  var fxp;
+  var flip;
+}
+
+setSectionView = function(o) {
+  o.dst = config.section_view.dst;
+  o.pit = config.section_view.pit;
+  o.yaw = config.section_view.yaw;
+  o.fxp = new THREE.Vector3(config.section_view.fxp.x,
+			    config.section_view.fxp.y,
+			    config.section_view.fxp.z);
+  o.flip = false;
+}
+
+setURL = function() {
+  url = config.iip3dsrv + '?' +
+        'wlz=' + config.section.wlz + '&' +
+	'mod=zeta&' +
+        'fxp=' + sv.fxp.x + ',' + sv.fxp.y + ',' + sv.fxp.z + '&' +
+	'pit=' + sv.pit + '&' +
+	'yaw=' + sv.yaw + '&' +
+	'dst=' + sv.dst;
+  return(url);
+}
+
+rgbColor = function(n, a) {
+  var r = (n >> 16) & 255;
+  var g = (n >> 8) & 255;
+  var b = n & 255;
+  var s = '' + r + ',' + g + ',' + b + ',' + a;
+  return(s);
+}
+
+setPlaneTexture = function() {
+  var t = url + '&qlt=50&sel=0,255&';
+  if(rc.sectionDomainVisible) {
+    for(var i = 1; i < config.domains.length; ++i) {
+      t = t + 'sel=' + config.domains[i].idx + ',' +
+	  rgbColor(config.domains[i].color, 128) + '&';
+    }
+  }
+  t = t + 'cvt=png';
+  return(t);
+}
+
+updatePlane = function() {
+  if(config.section && config.section.wlz && (config.section.wlz !== 'null')) {
+    url = setURL();
+    vtx = ren.getIIP3DBBVertices(url, new THREE.Vector3(1, 1, 1));
+    tex = setPlaneTexture();
+    pln = ren.makePlaneFromVertices(vtx);
+    if(sv.flipSection) {
+      pln.normal = pln.normal.negate();
+      pln.constant = -pln.constant;
+    }
+    for(var i = 0; i < config.domains.length; ++i) {
+      ren.updateModel({name: config.domains[i].name, clipping: pln});
+    }
+    ren.updateModel({name: config.section.name,
+                     opacity: config.section.opacity,
+                     vertices: vtx, texture: tex});
+  }
+}
+
+toggleGUIVisible = function() {
+  var elm = document.getElementById('controls');
+  if(elm.style.display === 'none') {
+    elm.style.display = 'block';
+  } else {
+    elm.style.display = 'none';
+  }
+}
+
+setGUIVisible = function(v) {
+  var elm = document.getElementById('controls');
+  elm.style.display = Boolean(v)? 'block': 'none';
+}
+
+setOuterSurfVisible = function(v) {
+  rc.outerSurfVisible = v;
+  var elm = document.getElementById('outerSurfaceVisible');
+  ren.updateModel({name: config.domains[0].name,
+                   visible: rc.outerSurfVisible});
+  elm.checked = rc.outerSurfVisible;
+}
+
+setSectionVisible = function(v) {
+  if(config.section && config.section.wlz && (config.section.wlz !== 'null')) {
+    rc.sectionVisible = v;
+    var elm = document.getElementById('sectionVisible');
+    ren.updateModel({name: config.section.name,
+		     opacity: config.section.opacity,
+                     visible: rc.sectionVisible});
+    elm.checked = rc.sectionVisible;
+  }
+}
+
+setSectionClip = function(c) {
+  rc.sectionClip = c;
+  var elm = document.getElementById('sectionClipping');
+  ren.setLocalClipping(rc.sectionClip);
+  elm.checked = rc.sectionClip;
+}
+
+setDomainSurfVisible = function(v) {
+  rc.domainSurfVisible = v;
+  var elm = document.getElementById('domainSurfaces');
+  for(var i = 1; i < config.domains.length; ++i) {
+    ren.updateModel({name: config.domains[i].name,
+                     visible: rc.domainSurfVisible});
+  }
+  elm.checked = rc.domainSurfVisible;
+}
+
+setSectionDomainVisible = function(v) {
+  rc.sectionDomainVisible = v;
+  var elm = document.getElementById('sectionDomains');
+  elm.checked = rc.sectionDomainVisible;
+  if(pln) {
+    updatePlane();
+  }
+}
+
+updateDst = function(v, pln) {
+  sv.dst = v;
+  document.getElementById('dstValue').value = sv.dst;
+  document.getElementById('dstSlider').value = sv.dst;
+  if(pln) {
+    updatePlane();
+  }
+}
+
+setDstRange = function(dst) {
+  var req = new XMLHttpRequest();
+  req.open('GET', url + '&OBJ=Wlz-distance-range', false);
+  req.send(null);
+  if(req.status === 200) {
+    var rsp = req.responseText.split(':')[1].split(' ');
+    var min = Number(rsp[0]);
+    var max = Number(rsp[1]);
+    var elm = document.getElementById('dstSlider');
+    elm.offsetWidth; 
+    elm.min = min;
+    elm.max = max;
+    elm.value = sv.dst;
+    elm = document.getElementById('dstValue');
+    elm.min = min;
+    elm.max = max;
+    elm.value = sv.dst;
+  }
+}
+
+updatePit = function(v, pln) {
+  if(v < 0.0) {
+    v = 0;
+  } else if(v > 179.9) {
+    v = 179.9;
+  }
+  sv.pit = v;
+  document.getElementById('pitValue').value = sv.pit;
+  document.getElementById('pitSlider').value = sv.pit;
+  setDstRange(sv.dst);
+  if(pln) {
+    updatePlane();
+  }
+}
+
+updateYaw = function(v, pln) {
+  if(v < 0.0) {
+    v = 0;
+  } else if(v > 359.9) {
+    v = 359.9;
+  }
+  sv.yaw = v;
+  document.getElementById('yawValue').value = sv.yaw;
+  document.getElementById('yawSlider').value = sv.yaw;
+  setDstRange(sv.dst);
+  if(pln) {
+    updatePlane();
+  }
+}
+
+updateDstPitYaw = function(d, p, y) {
+  updateDst(d, false);
+  updatePit(p, false);
+  updateYaw(y, true);
+}
+
+setFlipSection = function(v) {
+  sv.flipSection = v;
+  var elm = document.getElementById('flipSection');
+  elm.checked = sv.flipSection;
+  updatePlane();
+}
+
+pickHandler = function(e) {
+  var txt = 'Objects (front to back):\n';
+  for(var i = 0; i < e.hitlist.length; ++i) {
+    var hit = e.hitlist[i].object;
+    txt = txt + '  ' + hit.name + '\n';
+  }
+  window.alert(txt);
+}
+
+keyPressed = function(e) {
+  e = e || window.event;
+  if("key" in e) {
+    if(e.key === "g") {
+      toggleGUIVisible();
+    }
+  }
+}
+
+shareView = function() {
+  var href = new String(location.href);
+  txt = 'Cut and paste the URL:\n  ' + href.split('&')[0] +
+        '&dst=' + sv.dst + '&pit=' + sv.pit + '&yaw=' + sv.yaw + '&';
+  window.alert(txt);
+}
+
+setModels = function() {
+  var  usePln = (config.section && config.section.wlz &&
+                 (config.section.wlz !== 'null'));
+  if(usePln) {
+    setURL();
+    vtx = ren.getIIP3DBBVertices(url, new THREE.Vector3(1, 1, 1));
+    tex = setPlaneTexture();
+    pln = ren.makePlaneFromVertices(vtx);
+    ren.addModel({name:        config.section.name,
+		  mode:        MARenderMode.SECTION,
+		  color:       config.section.color,
+		  opacity:     config.section.opacity,
+		  transparent: config.section.transparent,
+		  vertices:    vtx,
+		  texture:     tex});
+  }
+  for(var i = 0; i < config.domains.length; ++i) {
+    if(usePln) {
+      ren.addModel({name:        config.domains[i].name,
+		    path:        config.domains[i].path,
+		    transparent: config.domains[i].transparent,
+		    clipping:    pln,
+		    opacity:     config.domains[i].opacity,
+		    color:       config.domains[i].color,
+		    mode:        MARenderMode.PHONG});
+    } else {
+      ren.addModel({name:        config.domains[i].name,
+		    path:        config.domains[i].path,
+		    transparent: config.domains[i].transparent,
+		    opacity:     config.domains[i].opacity,
+		    color:       config.domains[i].color,
+		    mode:        MARenderMode.PHONG});
+    }
+  }
+}
+
+setPage = function() {
+  document.title = config.title;
+  var elm = document.getElementById('info');
+  elm.innerHTML = config.info;
+  setGUIVisible(config.show_gui);
+  if(config.preset_view) {
+    var par = document.getElementById('presets');
+    par.appendChild(document.createElement('br'));
+    for(var i = 0; i < config.preset_view.length; ++i) {
+      var vw = config.preset_view[i];
+      var but = document.createElement('input');
+      but.type = 'button';
+      but.name = vw.name;
+      but.value = vw.name;
+      but.onclick = Function('updateDstPitYaw(' + vw.dst + ',' +
+                                                  vw.pit + ',' +
+						  vw.yaw + ')');
+      par.appendChild(but);
+    }
+  }
+}
+
+function parseURL() {
+  var prm = {};
+  var href = new String(location.href);
+  var seg = href.split('?');
+  if(seg.length === 2) {
+    seg = seg[1].split('&');
+    var len = seg.length;
+    for(var i = 0; i < len; ++i) {
+      var s = seg[i].split('=');
+      prm[s[0]] = s[1];
+    }
+  }
+  return(prm);
+}
+
+main = function() {
+  var vtx;
+  var tex;
+  var pln;
+  var cen;
+  var pos;
+  var up;
+  var container;
+
+  setPage();
+  sv = new SectionView();
+  setSectionView(sv);
+  rc = new RenderControls();
+  setRenderControls(rc);
+  container = document.getElementById('three');
+  if(!(Detector.webgl)) {
+    Detector.addGetWebGLMessage();
+  }
+  ren = new MARenderer(window, container);
+  ren.init();
+  ren.setLocalClipping(true);
+  if(config.three_view) {
+    cen = new THREE.Vector3(config.three_view.cen.x,
+			    config.three_view.cen.y,
+			    config.three_view.cen.z);
+    pos = new THREE.Vector3(config.three_view.pos.x,
+			    config.three_view.pos.y,
+			    config.three_view.pos.z);
+    up  = new THREE.Vector3(config.three_view.up.x,
+			    config.three_view.up.y,
+			    config.three_view.up.z);
+    ren.setCamera(cen, config.three_view.near, config.three_view.far, pos);
+    ren.setHome(pos, up);
+  }
+  setModels();
+  setDstRange(config.section_view.dst);
+  updatePit(config.section_view.pit);
+  updateYaw(config.section_view.yaw, true);
+  setOuterSurfVisible(true);
+  setDomainSurfVisible(true);
+  setSectionVisible(true);
+  setSectionDomainVisible(true);
+  setSectionClip(true);
+  ren.addEventListener('pick', pickHandler);
+  window.addEventListener('keypress', keyPressed, false);
+  ren.animate();
+}
+
+var prm = parseURL();
+if(prm && prm['config']) {
+  var req = new XMLHttpRequest();
+  req.open('GET', prm['config'], false);
+  req.send(null);
+  if(req.status === 200) {
+    parseURL();
+    config = JSON.parse(req.responseText);
+    if(config) {
+      if(prm['dst']) {
+	config.section_view.dst = prm['dst'];
+      }
+      if(prm['pit']) {
+	config.section_view.pit = prm['pit'];
+      }
+      if(prm['yaw']) {
+	config.section_view.yaw = prm['yaw'];
+      }
+      if(prm['upx']) {
+	config.three_view.up.x = prm['upx'];
+      }
+      if(prm['upy']) {
+	config.three_view.up.y = prm['upy'];
+      }
+      if(prm['upz']) {
+	config.three_view.up.z = prm['upz'];
+      }
+      if(prm['psx']) {
+	config.three_view.pos.x = prm['psx'];
+      }
+      if(prm['psy']) {
+	config.three_view.pos.y = prm['psy'];
+      }
+      if(prm['psz']) {
+	config.three_view.pos.z = prm['psz'];
+      }
+      if(prm['show_gui']) {
+	config.show_gui = (prm['show_gui'] !== 'false');
+      }
+      main();
+    }
+  }
+}
+
+</script>
+</body>
+</html>
