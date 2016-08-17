@@ -1,41 +1,4 @@
 <!DOCTYPE html>
-<!---
-* \file         MARenderView.html
-* \author       Bill Hill
-* \date         August 2016
-* \version      $Id$
-* \par
-* Address:
-*               MRC Human Genetics Unit,
-*               MRC Institute of Genetics and Molecular Medicine,
-*               University of Edinburgh,
-*               Western General Hospital,
-*               Edinburgh, EH4 2XU, UK.
-* \par
-* Copyright (C), [2016],
-* The University Court of the University of Edinburgh,
-* Old College, Edinburgh, UK.
-* 
-* This program is free software; you can redistribute it and/or
-* modify it under the terms of the GNU General Public License
-* as published by the Free Software Foundation; either version 2
-* of the License, or (at your option) any later version.
-*
-* This program is distributed in the hope that it will be
-* useful but WITHOUT ANY WARRANTY; without even the implied
-* warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
-* PURPOSE.  See the GNU General Public License for more
-* details.
-*
-* You should have received a copy of the GNU General Public
-* License along with this program; if not, write to the Free
-* Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
-* Boston, MA  02110-1301, USA.
-* \brief	A fairly simple surface and section viewer application
-*               based on MARender, which itself is based on three.js
-*               and IIP3D. The viewer reads it's configuration from the
-*               applicaton href.
---->
 <html lang="en">
 <head>
 <title>MARenderView</title>
@@ -249,6 +212,13 @@ setSectionView = function(o) {
   o.fxp = new THREE.Vector3(config.section_view.fxp.x,
 			    config.section_view.fxp.y,
 			    config.section_view.fxp.z);
+  if(config.voxel_sz) {
+  o.vxs = new THREE.Vector3(config.voxel_sz.x,
+                            config.voxel_sz.y,
+			    config.voxel_sz.z);
+  } else {
+    o.vxs = new THREE.Vector3(1, 1, 1);
+  }
   o.flip = false;
 }
 
@@ -286,7 +256,7 @@ setPlaneTexture = function() {
 updatePlane = function() {
   if(config.section && config.section.wlz && (config.section.wlz !== 'null')) {
     url = setURL();
-    vtx = ren.getIIP3DBBVertices(url, new THREE.Vector3(1, 1, 1));
+    vtx = ren.getIIP3DBBVertices(url, sv.vxs);
     tex = setPlaneTexture();
     pln = ren.makePlaneFromVertices(vtx);
     if(sv.flipSection) {
@@ -463,7 +433,7 @@ setModels = function() {
                  (config.section.wlz !== 'null'));
   if(usePln) {
     setURL();
-    vtx = ren.getIIP3DBBVertices(url, new THREE.Vector3(1, 1, 1));
+    vtx = ren.getIIP3DBBVertices(url, sv.vxs);
     tex = setPlaneTexture();
     pln = ren.makePlaneFromVertices(vtx);
     ren.addModel({name:        config.section.name,
