@@ -289,7 +289,7 @@ setGUIVisible = function(v) {
 setOuterSurfVisible = function(v) {
   rc.outerSurfVisible = v;
   var elm = document.getElementById('outerSurfaceVisible');
-  ren.updateModel({name: config.domains[0].name,
+  ren.updateModel({name: config.domains[Number(config.outer_idx)].name,
                    visible: rc.outerSurfVisible});
   elm.checked = rc.outerSurfVisible;
 }
@@ -315,9 +315,11 @@ setSectionClip = function(c) {
 setDomainSurfVisible = function(v) {
   rc.domainSurfVisible = v;
   var elm = document.getElementById('domainSurfaces');
-  for(var i = 1; i < config.domains.length; ++i) {
-    ren.updateModel({name: config.domains[i].name,
-                     visible: rc.domainSurfVisible});
+  for(var i = 0; i < config.domains.length; ++i) {
+    if(config.domains[i].idx !== config.outer_idx) {
+       ren.updateModel({name: config.domains[i].name,
+			visible: rc.domainSurfVisible});
+    }
   }
   elm.checked = rc.domainSurfVisible;
 }
@@ -557,6 +559,9 @@ if(prm && prm['config']) {
   if(req.status === 200) {
     parseURL();
     config = JSON.parse(req.responseText);
+    if(typeof config.outer_idx === 'undefined') {
+      config['outer_idx'] = 0;
+    }
     if(config) {
       if(prm['dst']) {
 	config.section_view.dst = prm['dst'];
