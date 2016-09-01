@@ -793,12 +793,11 @@ MARenderer = function(win, con) {
    * \function	_updateObj
    * \brief	Updates the given objects properties.
    * \param obj		Given object.
-   * \param		Properties to set in the given object.
+   * \param gProp	Properties to set in the given object.
    */
   this._updateObj = function(obj, gProp) {
     var itm = new MARenderItem();
     if(itm) {
-      itm.name = name;
       if(gProp['color']) {
 	itm.color = gProp['color'];
       } else if(obj.material && obj.material.color) {
