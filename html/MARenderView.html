@@ -286,10 +286,21 @@ setGUIVisible = function(v) {
   elm.style.display = Boolean(v)? 'block': 'none';
 }
 
+getNameOfOuter = function() {
+  var nam = undefined;
+  for(var i = 0; i < config.domains.length; ++i) {
+    if(config.domains[i].idx === config.outer_idx) {
+      nam = config.domains[i].name;
+    }
+  }
+  return(nam);
+}
+
 setOuterSurfVisible = function(v) {
   rc.outerSurfVisible = v;
   var elm = document.getElementById('outerSurfaceVisible');
-  ren.updateModel({name: config.domains[Number(config.outer_idx)].name,
+  var outerName = getNameOfOuter();
+  ren.updateModel({name: outerName,
                    visible: rc.outerSurfVisible});
   elm.checked = rc.outerSurfVisible;
 }
@@ -328,7 +339,7 @@ setSectionDomainVisible = function(v) {
   rc.sectionDomainVisible = v;
   var elm = document.getElementById('sectionDomains');
   elm.checked = rc.sectionDomainVisible;
-  if(pln) {
+  if(typeof pln !== 'undefined') {
     updatePlane();
   }
 }
