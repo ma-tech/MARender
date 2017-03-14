@@ -571,7 +571,7 @@ MARenderer = function(win, con) {
     }
     for(var i = 0, l = this.scene.children.length; i < l; i ++ ) {
       var child = this.scene.children[i];
-      if(child && (child.type === 'PointCloud')) {
+      if(child && (child.type === 'Points')) {
         if(child.material && child.material.size) {
 	  child.material.size = sz;
 	  child.material.needsUpdate = true;
@@ -591,7 +591,7 @@ MARenderer = function(win, con) {
   this.pointSizeIncrement = function(inc) {
     for(var i = 0, l = this.scene.children.length; i < l; i ++ ) {
       var child = this.scene.children[i];
-      if(child && (child.type === 'PointCloud')) {
+      if(child && (child.type === 'Points')) {
         if(child.material && child.material.size) {
 	  child.material.size *= 1.0 + inc;
 	  if(child.material.size > 99.9) {
@@ -846,7 +846,7 @@ MARenderer = function(win, con) {
 	  itm.mode = mode;
 	}
       } else {
-        if(obj.type === 'PointCloud') {
+        if(obj.type === 'Points') {
 	  itm.mode = MARenderMode.POINT;
 	} else if(obj.material && (obj.material.map)) {
 	  itm.mode = MARenderMode.SECTION;
@@ -1120,7 +1120,7 @@ MARenderer = function(win, con) {
       var child = this.scene.children[i];
       if(child && 
          ((child.type === 'Mesh') ||
-	  (child.type === 'PointCloud'))) {
+	  (child.type === 'Points'))) {
 	++n;
 	var b = new THREE.Box3();
 	b.setFromObject(child);
