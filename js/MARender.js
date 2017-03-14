@@ -85,7 +85,7 @@ MARenderCameraState = function() {
 MARenderer = function(win, con) {
   var self = this;
   this.type = 'MARenderer';
-  Object.defineProperty(self, 'version', {value: '1.2.4', writable: false});
+  Object.defineProperty(self, 'version', {value: '1.3.0', writable: false});
   this.win = win;
   this.con = con;
   this.scene;
@@ -258,10 +258,10 @@ MARenderer = function(win, con) {
 		      if(geom.colors.length > 0) {
                         mat.vertexColors = THREE.VertexColors;
 		      }
-		      var pcld = new THREE.PointCloud(geom, mat);
-		      pcld.name = itm.name;
-		      pcld.sortParticles = true;
-		      self.scene.add(pcld);
+		      var pnts = new THREE.Points(geom, mat);
+		      pnts.name = itm.name;
+		      pnts.sortParticles = true;
+		      self.scene.add(pnts);
 		      break;
 		    default:
 		      var mesh = new THREE.Mesh(geom, mat);
@@ -288,25 +288,25 @@ MARenderer = function(win, con) {
 	  break;
 	case MARenderMode.SECTION:
 	  if(itm.texture) {
-	    THREE.ImageUtils.loadTexture(itm.texture,
-		THREE.UVMapping,
-		function(tex) {
-		  // onLoad
-		  var geom = self.makeSectionGeometry(itm.vertices);
-		  var mat = self._makeMaterial(itm);
-		  tex.flipY = false;
-		  tex.minFilter = THREE.LinearFilter;
-		  tex.needsUpdate = true;
-		  mat.map = tex;
-		  var pln = new THREE.Mesh(geom, mat);
-		  pln.name = itm.name;
-		  self.scene.add(pln);
-		  self.makeLive();
-		},
-		function() {
-	          console.log('MARenderer.addModel() texture load failed: ' +
-		              itm.texture);
-		});
+	    var secLoader = new THREE.TextureLoader();
+	    secLoader.crossOrigin = '';
+	    secLoader.load(itm.texture,
+		 function(tx) {
+		   var geom = self.makeSectionGeometry(itm.vertices);
+		   var mat = self._makeMaterial(itm);
+		   tx.flipY = false;
+		   tx.minFilter = THREE.LinearFilter;
+		   tx.needsUpdate = true;
+		   mat.map = tx;
+		   var pln = new THREE.Mesh(geom, mat);
+		   pln.name = itm.name;
+		   self.scene.add(pln);
+		   self.makeLive();
+		 },
+		 function() {
+		   console.log('MARenderer.addModel() texture load failed: ' +
+			       itm.texture);
+		 });
 	  }
 	  break;
 	default:
@@ -1084,13 +1084,15 @@ MARenderer = function(win, con) {
 	sProp['blendDst'] = THREE.DstColorFactor;
 	sProp['blendEquation'] = THREE.MaxEquation;
 	sProp['alphaTest'] = 0.5;
-	sProp['map'] = THREE.ImageUtils.loadTexture('data:image/png;base64,' +
-	'iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAQAAABuBnYAAAAAAmJLR0QA/4eP' +
-	'zL8AAAAJcEhZcwAACxMAAAsTAQCanBgAAAAHdElNRQfgAg8MNSkRqlGqAAAA' +
-	'VElEQVQI113NQQ0DIRBA0TcEFYQTSVWsAHRUWXUgoDY4bbAxPfS2X8D7ATk1' +
-	'nFhU8u0ysLPFp+Z0mTpe5CmaoYNuaMWj4thucNtOjZWNP+obK57bH17lGKmO' +
-	'V2FkAAAAAElFTkSuQmCC');
-	mat = new THREE.PointCloudMaterial(sProp);
+	var pntImg = 'data:image/png;base64,' +
+	    'iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAQAAABuBnYAAAAAAmJLR0QA/4eP' +
+	    'zL8AAAAJcEhZcwAACxMAAAsTAQCanBgAAAAHdElNRQfgAg8MNSkRqlGqAAAA' +
+	    'VElEQVQI113NQQ0DIRBA0TcEFYQTSVWsAHRUWXUgoDY4bbAxPfS2X8D7ATk1' +
+	    'nFhU8u0ysLPFp+Z0mTpe5CmaoYNuaMWj4thucNtOjZWNP+obK57bH17lGKmO' +
+	    'V2FkAAAAAElFTkSuQmCC';
+	var pntLoader = new THREE.TextureLoader();
+	pntLoader.load(pntImg, function(tx) {sProp['map'] = tx});
+	mat = new THREE.PointsMaterial(sProp);
 	break;
       case MARenderMode.SECTION:
 	sProp['color'] = itm.color;
