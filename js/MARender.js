@@ -74,6 +74,84 @@ MARenderCameraState = function() {
   this.target = new THREE.Vector3(0, 0, 0);
 }
 
+/**
+* Point rendering material
+*/
+AlphaPointsMaterial = function(params) {
+  var vertexShader = [
+    //AlphaPoint vertex shader
+    'attribute float sizes;',
+    'attribute float opacities;',
+    'attribute vec3 colors;',
+    'uniform float scale;',
+    'varying vec3 vColor;',
+    'varying float vOpacity;',
+    '#include <common>',
+    //'#include <logdepthbuf_pars_vertex>',
+    '#include <clipping_planes_pars_vertex>',
+    'void main() {',
+      'vColor = colors;',
+      'vOpacity = opacities;',
+      '#include <begin_vertex>',
+      '#include <project_vertex>',
+      'gl_PointSize = sizes * scale;',
+      '#include <clipping_planes_vertex>',
+    '}'
+  ].join('\n');
+  var fragmentShader = [
+    //AlphaPoint fragment shader
+    'uniform vec3 diffuse;',
+    'uniform float opacity;',
+    'uniform sampler2D map;',
+    'varying vec3 vColor;',
+    'varying float vOpacity;',
+    '#include <common>',
+    '#include <clipping_planes_pars_fragment>',
+    'void main() {',
+      '#include <clipping_planes_fragment>',
+      'gl_FragColor = vec4(diffuse * vColor, opacity * vOpacity);',
+      'gl_FragColor = gl_FragColor * texture2D(map, gl_PointCoord);',
+      'if(gl_FragColor.a < ALPHATEST) {',
+        'discard;',
+      '}',
+    '}'
+  ].join('\n');
+  var splitParam = [ {
+    uniforms: THREE.UniformsUtils.clone(THREE.UniformsLib['points']),
+    vertexShader: vertexShader,
+    fragmentShader: fragmentShader
+  }, {}];
+  for(var p in params) {
+    switch(p) {
+      case 'map':
+      case 'color':
+      case 'scale':
+	splitParam[1][p] = params[p];
+	break
+      default:
+	splitParam[0][p] = params[p];
+	break;
+    }
+  }
+  var material = new THREE.ShaderMaterial(splitParam[0]);
+  material.type = 'AlphaPointsMaterial';
+  for(var p in splitParam[1]) {
+    switch(p) {
+      case 'color':
+	material.uniforms.diffuse.value = new THREE.Color(
+	                                      splitParam[1]['color']);
+	break;
+      case 'map':
+	material.uniforms.map.value = splitParam[1]['map'];
+	break;
+      case 'scale':
+	material.uniforms.scale.value = splitParam[1]['scale'];
+	break;
+    }
+  }
+  return(material);
+}
+
 /*!
 * \class	MARenderer
 * \constructor
@@ -255,7 +333,8 @@ MARenderer = function(win, con) {
 		if(mat) {
 		  switch(Number(itm.mode)) {
 		    case MARenderMode.POINT:
-		      if(geom.colors.length > 0) {
+		      if((geom.attributes.colors !== undefined) &&
+		         (geom.attributes.colors.array.length > 0)) {
                         mat.vertexColors = THREE.VertexColors;
 		      }
 		      var pnts = new THREE.Points(geom, mat);
@@ -1075,24 +1154,25 @@ MARenderer = function(win, con) {
 	break;
       case MARenderMode.POINT:
 	sProp['color'] = itm.color;
+	sProp['opacity'] = itm.opacity;
 	sProp['visible'] = itm.visible;
 	sProp['transparent'] = itm.transparent;
 	sProp['clippingPlanes'] = itm.clipping;
-	sProp['size'] = this.pointSize;
+	sProp['scale'] = this.pointSize;
 	sProp['blending'] = THREE.CustomBlending;
-	sProp['blendSrc'] = THREE.DstAlphaFactor;
-	sProp['blendDst'] = THREE.DstColorFactor;
-	sProp['blendEquation'] = THREE.MaxEquation;
-	sProp['alphaTest'] = 0.5;
-	var pntImg = 'data:image/png;base64,' +
+	sProp['blendSrc'] = THREE.SrcAlphaFactor;
+	sProp['blendDst'] = THREE.OneMinusSrcAlphaFactor;
+	sProp['blendEquation'] = THREE.AddEquation;
+	sProp['alphaTest'] = 0.1;
+	sProp['map'] =        THREE.ImageUtils.loadTexture(
+	    'data:image/png;base64,' +
 	    'iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAQAAABuBnYAAAAAAmJLR0QA/4eP' +
 	    'zL8AAAAJcEhZcwAACxMAAAsTAQCanBgAAAAHdElNRQfgAg8MNSkRqlGqAAAA' +
 	    'VElEQVQI113NQQ0DIRBA0TcEFYQTSVWsAHRUWXUgoDY4bbAxPfS2X8D7ATk1' +
 	    'nFhU8u0ysLPFp+Z0mTpe5CmaoYNuaMWj4thucNtOjZWNP+obK57bH17lGKmO' +
-	    'V2FkAAAAAElFTkSuQmCC';
-	var pntLoader = new THREE.TextureLoader();
-	pntLoader.load(pntImg, function(tx) {sProp['map'] = tx});
-	mat = new THREE.PointsMaterial(sProp);
+	    'V2FkAAAAAElFTkSuQmCC')
+	mat = new AlphaPointsMaterial(sProp);
+	// mat = new THREE.PointsMaterial(sProp);
 	break;
       case MARenderMode.SECTION:
 	sProp['color'] = itm.color;
