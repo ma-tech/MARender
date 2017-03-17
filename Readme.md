@@ -27,7 +27,7 @@ screenshot</a>.
 
 A
 <a
-href="http://aberlour.hgu.mrc.ac.uk/MARenderTests/visabilitytest.html">
+href="http://aberlour.hgu.mrc.ac.uk/MARenderTests/example.html">
 more complex example</a>
 showing IIP3D integration, surfaces, point clouds and arbitrary sectioning.
 
