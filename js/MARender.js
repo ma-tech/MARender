@@ -53,7 +53,7 @@ MARenderMode = {
 MARenderItem = function() {
   this.name             = undefined;
   this.path             = undefined;
-  this.color            = 0x000000;
+  this.color            = 0xffffff;
   this.side		= THREE.FrontSide; /* Double sided can cause artifacts
                                               so only use if needed. */
   this.transparent      = false;
@@ -94,7 +94,7 @@ AlphaPointsMaterial = function(params) {
       'vOpacity = opacities;',
       '#include <begin_vertex>',
       '#include <project_vertex>',
-      'gl_PointSize = sizes * scale;',
+      'gl_PointSize = 512.0 * sizes * scale / length(mvPosition.xyz);',
       '#include <clipping_planes_vertex>',
     '}'
   ].join('\n');
@@ -125,9 +125,12 @@ AlphaPointsMaterial = function(params) {
     switch(p) {
       case 'map':
       case 'color':
-      case 'scale':
 	splitParam[1][p] = params[p];
 	break
+      case 'scale':
+      case 'size':
+        splitParam[1]['scale'] = params[p];
+	break;
       default:
 	splitParam[0][p] = params[p];
 	break;
@@ -174,7 +177,7 @@ MARenderer = function(win, con) {
   this.cameraControls;
   this.renderer;
   this.animCount = 0;    // Used to count animation frames since mouse movement
-  this.pointSize = 2;
+  this.pointSize = 10;
   this.mousePos = new THREE.Vector2(0,0);
   this.pickOfs = 0;
   this.nearPlane = 1;
@@ -329,14 +332,10 @@ MARenderer = function(win, con) {
 	    }
 	    loader.load(itm.path,
 	      function(geom) {
-		var mat = self._makeMaterial(itm);
+		var mat = self._makeMaterial(geom, itm);
 		if(mat) {
 		  switch(Number(itm.mode)) {
 		    case MARenderMode.POINT:
-		      if((geom.attributes.colors !== undefined) &&
-		         (geom.attributes.colors.array.length > 0)) {
-                        mat.vertexColors = THREE.VertexColors;
-		      }
 		      var pnts = new THREE.Points(geom, mat);
 		      pnts.name = itm.name;
 		      pnts.sortParticles = true;
@@ -372,7 +371,7 @@ MARenderer = function(win, con) {
 	    secLoader.load(itm.texture,
 		 function(tx) {
 		   var geom = self.makeSectionGeometry(itm.vertices);
-		   var mat = self._makeMaterial(itm);
+		   var mat = self._makeMaterial(geom, itm);
 		   tx.flipY = false;
 		   tx.minFilter = THREE.LinearFilter;
 		   tx.needsUpdate = true;
@@ -605,6 +604,23 @@ MARenderer = function(win, con) {
   }
 
   /*!
+   * \class     MARenderer
+   * \return	Clamped point size.
+   * \function  _pointSizeClamp
+   * \brief	Clamps the given point size to the allowed range.
+   * \param	sz	Given point size.
+   */
+  this._opacityClamp = function(op) {
+    if(op > 1.0) {
+      op = 1.0;
+    }
+    else if(op < 0.0) {
+      op = 0.0;
+    }
+    return(op);
+  }
+
+  /*!
    * \class	MARenderer
    * \function	opacityIncrement
    * \brief	Increments the opacity of all transparent models.
@@ -612,6 +628,7 @@ MARenderer = function(win, con) {
    * 			negative.
    */
   this.opacityIncrement = function(inc) {
+    var update = false;
     for(var i = 0, l = this.scene.children.length; i < l; i ++ ) {
       var child = this.scene.children[i];
       if(child && (child.type === 'Mesh')) {
@@ -619,21 +636,38 @@ MARenderer = function(win, con) {
 	   (child.material.opacity != undefined)) {
 	  var op = child.material.opacity;
 	  var tr = child.material.transparent;
-	  if(inc > 0.0) {
-	    if(op < 0.01) {
-	      op = 1.0 / 64.0;
-	      } else {
-	        op *= 2.0;
-	      }
-	  } else {
-	    op /= 2.0;
+	  if((inc > 0.0) && (op < inc)) {
+	    op = inc;
 	  }
+	  else {
+	    op = op * (1.0 + inc);
+	  }
+	  op = this._opacityClamp(op);
 	  this._setMaterialOpacity(child.material, tr, op);
 	  child.material.needsUpdate = true;
-          this.render();
 	}
       }
     }
+    if(update) {
+      this.render();
+    }
+  }
+
+  /*!
+   * \class     MARenderer
+   * \return	Clamped point size.
+   * \function  _pointSizeClamp
+   * \brief	Clamps the given point size to the allowed range.
+   * \param	sz	Given point size.
+   */
+  this._pointSizeClamp = function(sz) {
+    if(sz > 99.9) {
+      sz = 99.9;
+    }
+    else if(sz < 0.1) {
+      sz = 0.1;
+    }
+    return(sz);
   }
 
   /*!
@@ -645,20 +679,31 @@ MARenderer = function(win, con) {
    * 			is used.
    */
   this.pointSizeSet = function(sz) {
-    if(sz === undefined) {
-      sz = this.pointSize;
+    var update = false;
+    if(sz !== undefined) {
+      this.pointSize = this._pointSizeClamp(sz);
     }
     for(var i = 0, l = this.scene.children.length; i < l; i ++ ) {
       var child = this.scene.children[i];
       if(child && (child.type === 'Points')) {
-        if(child.material && child.material.size) {
-	  child.material.size = sz;
-	  child.material.needsUpdate = true;
-          this.render();
+	var mat = child.material;
+	if(mat) {
+	  if(mat.type == 'PointsMaterial') {
+	    update = true;
+	    mat.needsUpdate = true;
+	    mat.size = this.pointSize;
+	  }
+	  else if(mat.type =='AlphaPointsMaterial') {
+	    update = true;
+	    mat.needsUpdate = true;
+	    mat.uniforms.scale.value = this.pointSize;
+	  }
 	}
       }
     }
-    this.pointSize = sz;
+    if(update) {
+      this.render();
+    }
   }
 
   /*!
@@ -668,22 +713,8 @@ MARenderer = function(win, con) {
    * \param inc		Increment which may be positive or negative.
    */
   this.pointSizeIncrement = function(inc) {
-    for(var i = 0, l = this.scene.children.length; i < l; i ++ ) {
-      var child = this.scene.children[i];
-      if(child && (child.type === 'Points')) {
-        if(child.material && child.material.size) {
-	  child.material.size *= 1.0 + inc;
-	  if(child.material.size > 99.9) {
-	    child.material.size = 99.9;
-	  }
-	  else if(child.material.size < 0.1) {
-	    child.material.size = 0.1;
-	  }
-	  child.material.needsUpdate = true;
-          this.render();
-	}
-      }
-    }
+    this.pointSize = this._pointSizeClamp(this.pointSize * (1.0 + inc));
+    this.pointSizeSet();
   }
 
   /*!
@@ -856,7 +887,7 @@ MARenderer = function(win, con) {
 	if(op > 1.0) {
 	  op = 1.0;
 	}
-	if(op < 0.51) {
+	if(op < 0.9) {
 	  mat['depthWrite'] = false;
 	} else {
 	  mat['depthWrite'] = true;
@@ -939,7 +970,7 @@ MARenderer = function(win, con) {
       case MARenderMode.PHONG:
       case MARenderMode.EMISSIVE:
       case MARenderMode.POINT:
-        var mat = this._makeMaterial(itm);
+        var mat = this._makeMaterial(obj.geometry, itm);
 	var oldmat = obj.material;
 	obj.material = mat;
 	if(oldmat) {
@@ -1094,7 +1125,7 @@ MARenderer = function(win, con) {
    * 		item.
    * \param itm		Given render item.
    */
-  this._makeMaterial = function(itm) {
+  this._makeMaterial = function(geom, itm) {
     var mat;
     var sProp = {};
     switch(itm.mode) {
@@ -1158,10 +1189,10 @@ MARenderer = function(win, con) {
 	sProp['visible'] = itm.visible;
 	sProp['transparent'] = itm.transparent;
 	sProp['clippingPlanes'] = itm.clipping;
-	sProp['scale'] = this.pointSize;
+	sProp['size'] = this.pointSize;
 	sProp['blending'] = THREE.CustomBlending;
-	sProp['blendSrc'] = THREE.SrcAlphaFactor;
-	sProp['blendDst'] = THREE.OneMinusSrcAlphaFactor;
+	sProp['blendSrc'] = THREE.SrcColorFactor;
+	sProp['blendDst'] = THREE.DstAlphaFactor;
 	sProp['blendEquation'] = THREE.AddEquation;
 	sProp['alphaTest'] = 0.1;
 	sProp['map'] =        THREE.ImageUtils.loadTexture(
@@ -1171,8 +1202,13 @@ MARenderer = function(win, con) {
 	    'VElEQVQI113NQQ0DIRBA0TcEFYQTSVWsAHRUWXUgoDY4bbAxPfS2X8D7ATk1' +
 	    'nFhU8u0ysLPFp+Z0mTpe5CmaoYNuaMWj4thucNtOjZWNP+obK57bH17lGKmO' +
 	    'V2FkAAAAAElFTkSuQmCC')
-	mat = new AlphaPointsMaterial(sProp);
-	// mat = new THREE.PointsMaterial(sProp);
+	if((geom.attributes.colors !== undefined) &&
+	   (geom.attributes.colors.array.length > 0)) {
+	  mat = new AlphaPointsMaterial(sProp);
+	  mat.vertexColors = THREE.VertexColors;
+	} else {
+	  mat = new THREE.PointsMaterial(sProp);
+	}
 	break;
       case MARenderMode.SECTION:
 	sProp['color'] = itm.color;
@@ -1338,10 +1374,10 @@ MARenderer = function(win, con) {
 	self._testCode();
         break;
       case 60: // < opacity down
-	self.opacityIncrement(-1);
+	self.opacityIncrement(-0.1);
 	break;
       case 62: // > opacity up
-	self.opacityIncrement(1);
+	self.opacityIncrement(0.1);
 	break;
       case 63: // ?
 	self._pick();
@@ -1357,10 +1393,10 @@ MARenderer = function(win, con) {
 	self.goHome();
         break;
       case 112: // p
-	self.pointSizeIncrement(+0.2);
+	self.pointSizeIncrement(+0.1);
         break;
       case 113: // q
-	self.pointSizeIncrement(-0.2);
+	self.pointSizeIncrement(-0.1);
         break;
       case 115: // s
 	self._updateAllMesh({mode: MARenderMode.PHONG});
