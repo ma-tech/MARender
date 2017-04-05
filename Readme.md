@@ -23,11 +23,15 @@ and
 href="https://github.com/ma-tech/MARender/blob/master/examples/minimal-screenshot.png">
 screenshot</a>.
 
-A more complex
-<https://ma-tech.github.io/MARender/examples/example.html>example</a> 
-(<https://github.com/ma-tech/MARender/blob/master/examples/example.html>
-examples/example.html</a>) from which screenshot 03 below was taken,
-shows arbitrary sectioning of a 3D volumetric image
+A more complex example 
+(<a
+  href="https://ma-tech.github.io/MARender/examples/example.html">
+  live</a>,
+ <a
+  href="https://github.com/ma-tech/MARender/blob/master/examples/example.html">
+  source</a>)
+from which screenshot 03 below was taken,
+showing arbitrary sectioning of a 3D volumetric image
 (through integration with IIP3D),
 surfaces and point clouds.
 
