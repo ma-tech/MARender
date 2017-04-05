@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<title>MARender Example</title>
+<meta charset="utf-8">
+<style>
+body {
+  font-family      : Monospace;
+  background-color : #000;
+  color            : #fff;
+  margin           : 0px;
+  overflow         : hidden;
+}
+#three {
+  position         : absolute;
+   top             : 0px;
+   left            : 0px;
+   width           : 100%;
+   height          : 100%;
+}
+</style>
+</head>
+
+<body>
+<div id="info">
+MARender Example.
+</div>
+
+</div>
+<div id="three">
+</div>
+
+<script src="js/three.js"></script>
+<script src="js/TrackballControls.js"></script>
+<script src="js/STLLoader.js"></script>
+<script src="js/MAVTKLoader.js"></script>
+<script src="js/Detector.js"></script>
+<script src="js/MARender.js"></script>
+
+<script>
+if(!(Detector.webgl)) {
+  Detector.addGetWebGLMessage();
+}
+
+var container = document.getElementById('three');
+
+var ren = new MARenderer(window, container);
+
+ren.init();
+ren.pointSizeSet(10.0);
+
+var cen =  new THREE.Vector3(200, 165, 275);
+var near = 4;
+var far =  4000;
+var pos =  new THREE.Vector3(4.6251, -1189.4906, 136.2749);
+var up =   new THREE.Vector3(0.02426, 0.2305, -0.9728);
+ren.setCamera(cen, near, far, pos);
+ren.setHome(pos, up);
+
+var vtx;
+var tex;
+var use_iip3d = false;
+if(use_iip3d) {
+  var iipsrv = 'http://bill-lt//fcgi-bin/wlziipsrv.fcgi';
+  var wlz = '/opt/MAWWW/public/MARenderTests/models/EMA53_CmpndObj.wlz'
+  var url = iipsrv + '?wlz=' + wlz + 
+	    '&mod=zeta&fxp=199,165,273&&dst=-20&pit=90&yaw=90&rol=0';
+  vtx = ren.getIIP3DBBVertices(url, new THREE.Vector3(1, 1, 1));
+  tex = url + '&map=linear,0,255,255,0&cvt=png';
+} else {
+  vtx = [new THREE.Vector3(390, 145, 530),
+	     new THREE.Vector3(390, 145, 15),
+	     new THREE.Vector3(8,   145, 15),
+	     new THREE.Vector3(8,   145, 530)];
+
+  tex = 'models/EMA53_TS17_sect.png';
+}
+
+var pln = ren.makePlaneFromVertices(vtx);
+
+ren.setLocalClipping(true);
+ 
+ren.addModel({name:        'surf',
+	      path:        'models/EMA53_TS17_domain.vtk',
+	      color:       0xffffff,
+	      transparent: true,
+	      clipping:    pln,
+	      opacity:     0.2});
+
+ren.addModel({name: 'plane',
+	      mode: MARenderMode.SECTION,
+	      vertices: vtx,
+	      color: 0xffffff,
+              transparent: true,
+              opacity:   0.75,
+	      texture: tex});
+
+ren.addModel({name:        'shh',
+	      path:        'models/EMA53_TS17_Shh.vtk',
+	      color:       0x0040f0,
+	      mode:        MARenderMode.POINT,
+	      transparent: true});
+
+ren.addModel({name:        'wt1',
+	      path:        'models/EMA53_TS17_Wnt1.vtk',
+	      color:       0x00f000,
+	      mode:        MARenderMode.POINT,
+	      transparent: true});
+
+ren.addModel({name:        'heart',
+	      path:        'models/EMA53_TS17_heart.vtk',
+	      color:       0xf00000});
+
+ren.animate();
+</script>
+</body>
+</html>
+

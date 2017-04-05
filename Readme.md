@@ -8,15 +8,13 @@ with particular emphasis on anatomy and mapped spatial data
 (eg gene expression).
 
 Typical uses combine surface, section and point cloud renderings. Surfaces
-and point clouds are most readily read from VTK format files using the
-modified VTK loader
-https://github.com/ma-tech/three.js/blob/master/examples/js/loaders/MAVTKLoader.js
-and sections either from static images or from an IIP3D server
+and point clouds are read from VTK format files using the modified VTK loader.
+Sections may be read either from static images or from an IIP3D server
 (https://github.com/ma-tech/WlzIIPSrv).
 
 ## Examples
 
-A Minimal Example
+A minimal example
 <a
 href="https://github.com/ma-tech/MARender/blob/master/example/Minimal.html">
 source</a>
@@ -25,20 +23,23 @@ and
 href="https://github.com/ma-tech/MARender/blob/master/example/minimal-screenshot.png">
 screenshot</a>.
 
-A
-<a
-href="http://aberlour.hgu.mrc.ac.uk/MARenderTests/visabilitytest.html">
-more complex example</a>
-showing IIP3D integration, surfaces, point clouds and arbitrary sectioning.
+A more complex example 
+(<https://github.com/ma-tech/MARender/blob/master/examples/example.html>
+examples/example.html</a>) from which screenshot 03 below was taken,
+shows arbitrary sectioning of a 3D volumetric image
+(through integration with IIP3D),
+surfaces and point clouds.
 
 ## Screenshots
 
-More screenshots: 
 <a
 href="https://github.com/ma-tech/MARender/blob/master/example/screenshot-01.png">
 01</a>
- and 
+
 <a
 href="https://github.com/ma-tech/MARender/blob/master/example/screenshot-02.png">
 02</a>
-.
+
+<a
+href="https://github.com/ma-tech/MARender/blob/master/example/screenshot-03.png">
+03</a>
