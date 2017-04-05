@@ -33,13 +33,13 @@ surfaces and point clouds.
 ## Screenshots
 
 <a
-href="https://github.com/ma-tech/MARender/blob/master/example/screenshot-01.png">
+href="https://github.com/ma-tech/MARender/blob/master/examples/screenshot-01.png">
 01</a>
 
 <a
-href="https://github.com/ma-tech/MARender/blob/master/example/screenshot-02.png">
+href="https://github.com/ma-tech/MARender/blob/master/examples/screenshot-02.png">
 02</a>
 
 <a
-href="https://github.com/ma-tech/MARender/blob/master/example/screenshot-03.png">
+href="https://github.com/ma-tech/MARender/blob/master/examples/screenshot-03.png">
 03</a>
