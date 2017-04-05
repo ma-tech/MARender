@@ -23,7 +23,8 @@ and
 href="https://github.com/ma-tech/MARender/blob/master/examples/minimal-screenshot.png">
 screenshot</a>.
 
-A more complex example 
+A more complex
+<https://ma-tech.github.io/MARender/examples/example.html>example</a> 
 (<https://github.com/ma-tech/MARender/blob/master/examples/example.html>
 examples/example.html</a>) from which screenshot 03 below was taken,
 shows arbitrary sectioning of a 3D volumetric image
