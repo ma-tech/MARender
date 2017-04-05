@@ -16,11 +16,11 @@ Sections may be read either from static images or from an IIP3D server
 
 A minimal example
 <a
-href="https://github.com/ma-tech/MARender/blob/master/example/Minimal.html">
+href="https://github.com/ma-tech/MARender/blob/master/examples/Minimal.html">
 source</a>
 and
 <a
-href="https://github.com/ma-tech/MARender/blob/master/example/minimal-screenshot.png">
+href="https://github.com/ma-tech/MARender/blob/master/examples/minimal-screenshot.png">
 screenshot</a>.
 
 A more complex example 
