@@ -166,7 +166,7 @@ AlphaPointsMaterial = function(params) {
 MARenderer = function(win, con) {
   var self = this;
   this.type = 'MARenderer';
-  Object.defineProperty(self, 'version', {value: '1.3.0', writable: false});
+  Object.defineProperty(self, 'version', {value: '1.3.1', writable: false});
   this.win = win;
   this.con = con;
   this.scene;
