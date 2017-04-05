@@ -1,0 +1,42 @@
+{
+  "info": "Exported from MAVTKSurfViewer",
+    "title": "Export from MAVTKSurfViewer",
+    "three_view": {
+      "near": 100,
+      "far": 1000,
+      "cen": { "y": 138, "x": 219, "z": 153},
+      "pos": { "y": 880, "x": 251, "z": 135},
+      "up": { "y": -0.031715, "x": 0.016904, "z": -1.000000}
+    },
+    "outer_idx": 0,
+    "section": {
+      "opacity": 1.0,
+      "wlz": "null",
+      "name": "section",
+      "idx": 0,
+      "color": "0xffffff",
+      "transparent": true},
+    "section_view": {
+      "dst": 0,
+      "pit": 0,
+      "yaw": 0,
+      "fxp": { "y": 0, "x": 0, "z": 0}
+    },
+    "iip3dsrv": "None",
+    "show_gui": false,
+    "domains": [{
+      "opacity": 0.2,
+      "name": "emb.vtk",
+      "idx": 0,
+      "color": "0xffffff",
+      "path": "models/emb.vtk",
+      "transparent": true},
+    {
+      "opacity": 1.0,
+      "name": "som.vtk",
+      "idx": 1,
+      "color": "0x37ff05",
+      "path": "models/som.vtk",
+      "transparent": false}
+  ]
+}
