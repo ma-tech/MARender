@@ -48,6 +48,17 @@ MARenderMode = {
 }
 
 /**
+* Color look up tables.
+*/
+MARenderColormap = {
+  CUSTOM:		0,
+  GREYSCALE:		1,
+  COOLTOWARM:           2,
+  BLACKBODY:		3,
+  RAINBOW:		4
+}
+
+/**
 * Properties which may be set when adding or updating a model.
 */
 MARenderItem = function() {
@@ -59,6 +70,8 @@ MARenderItem = function() {
   this.transparent      = false;
   this.opacity          = 1.0;
   this.mode             = MARenderMode.PHONG;
+  this.colormap 	= MARenderColormap.GREYSCALE;
+  this.gamma            = 1.0,
   this.vertices		= undefined;
   this.texture		= undefined;
   this.visible          = true;
@@ -80,21 +93,22 @@ MARenderCameraState = function() {
 AlphaPointsMaterial = function(params) {
   var vertexShader = [
     //AlphaPoint vertex shader
-    'attribute float sizes;',
-    'attribute float opacities;',
-    'attribute vec3 colors;',
     'uniform float scale;',
-    'varying vec3 vColor;',
-    'varying float vOpacity;',
+    'uniform bool point_scalars_set;',
+    'attribute float point_scalars;',
+    'varying float vScalar;',
     '#include <common>',
     //'#include <logdepthbuf_pars_vertex>',
     '#include <clipping_planes_pars_vertex>',
     'void main() {',
-      'vColor = colors;',
-      'vOpacity = opacities;',
       '#include <begin_vertex>',
       '#include <project_vertex>',
-      'gl_PointSize = 512.0 * sizes * scale / length(mvPosition.xyz);',
+      'if(point_scalars_set) {',
+        'vScalar = point_scalars;',
+      '} else {',
+        'vScalar = 1.0;',
+      '}',
+      'gl_PointSize = 512.0 * vScalar * scale / length(mvPosition.xyz);',
       '#include <clipping_planes_vertex>',
     '}'
   ].join('\n');
@@ -103,33 +117,46 @@ AlphaPointsMaterial = function(params) {
     'uniform vec3 diffuse;',
     'uniform float opacity;',
     'uniform sampler2D map;',
-    'varying vec3 vColor;',
-    'varying float vOpacity;',
+    'uniform sampler2D clut;',
+    'varying float vScalar;',
     '#include <common>',
     '#include <clipping_planes_pars_fragment>',
     'void main() {',
       '#include <clipping_planes_fragment>',
-      'gl_FragColor = vec4(diffuse * vColor, opacity * vOpacity);',
-      'gl_FragColor = gl_FragColor * texture2D(map, gl_PointCoord);',
+      'float sd, cw;',
+      'vec2 sp;',
+      'sp = 2.0 * gl_PointCoord - 1.0;',
+      'sd = 1.0 - length(sp);',
+      'cw = (sd + 3.0) / 4.0;',
+      'gl_FragColor = vec4(diffuse, opacity * vScalar * sd);',
+      'gl_FragColor = gl_FragColor * texture2D(clut, vec2(vScalar * cw, .0));',
       'if(gl_FragColor.a < ALPHATEST) {',
         'discard;',
       '}',
     '}'
   ].join('\n');
   var splitParam = [ {
-    uniforms: THREE.UniformsUtils.clone(THREE.UniformsLib['points']),
+    uniforms: THREE.UniformsUtils.merge([
+                  THREE.UniformsUtils.clone(THREE.UniformsLib['points']),
+		  {point_scalars_set: {type: 'i', value: 0}},
+		  {clut: {type: 't', value: null}}]),
     vertexShader: vertexShader,
     fragmentShader: fragmentShader
-  }, {}];
+  }, {}, {}];
+
   for(var p in params) {
     switch(p) {
-      case 'map':
+      case 'clut':
       case 'color':
-	splitParam[1][p] = params[p];
+	splitParam[2][p] = params[p];
 	break
       case 'scale':
       case 'size':
-        splitParam[1]['scale'] = params[p];
+        splitParam[2]['scale'] = params[p];
+	break;
+      case 'gamma':
+      case 'colormap':
+        splitParam[1][p] = params[p];
 	break;
       default:
 	splitParam[0][p] = params[p];
@@ -137,18 +164,29 @@ AlphaPointsMaterial = function(params) {
     }
   }
   var material = new THREE.ShaderMaterial(splitParam[0]);
+  var def = new MARenderItem()
   material.type = 'AlphaPointsMaterial';
+  material.gamma = def.gamma;
+  material.colormap = def.colormap;
   for(var p in splitParam[1]) {
     switch(p) {
+      case 'gamma':
+      case 'colormap':
+        material.colormap = splitParam[1][p];
+	break;
+    }
+  }
+  for(var p in splitParam[2]) {
+    switch(p) {
+      case 'clut':
+	material.uniforms.clut.value = splitParam[2]['clut'];
+	break;
       case 'color':
 	material.uniforms.diffuse.value = new THREE.Color(
-	                                      splitParam[1]['color']);
-	break;
-      case 'map':
-	material.uniforms.map.value = splitParam[1]['map'];
+	                                      splitParam[2]['color']);
 	break;
       case 'scale':
-	material.uniforms.scale.value = splitParam[1]['scale'];
+	material.uniforms.scale.value = splitParam[2]['scale'];
 	break;
     }
   }
@@ -336,17 +374,16 @@ MARenderer = function(win, con) {
 		if(mat) {
 		  switch(Number(itm.mode)) {
 		    case MARenderMode.POINT:
-		      var pnts = new THREE.Points(geom, mat);
-		      pnts.name = itm.name;
-		      pnts.sortParticles = true;
-		      self.scene.add(pnts);
+		      var obj = new THREE.Points(geom, mat);
+		      obj.name = itm.name;
+		      obj.sortParticles = true;
 		      break;
 		    default:
-		      var mesh = new THREE.Mesh(geom, mat);
-		      mesh.name = itm.name;
-		      self.scene.add(mesh);
+		      var obj = new THREE.Mesh(geom, mat);
+		      obj.name = itm.name;
 		      break;
 		  }
+		  self.scene.add(obj);
 		  if(self.setCamOnLoad) {
 		    self._computeCenter();
 		    self.setCamera();
@@ -655,6 +692,87 @@ MARenderer = function(win, con) {
 
   /*!
    * \class     MARenderer
+   * \return	Color lookup table array.
+   * \function  _lutFromColormap
+   * \brief	Creates a new array with 256 RGBA entries for use in generating
+   * 		a color lookup table. The array is set using the given defined
+   * 		colormap.
+   * \param	colormap	Given colormap.
+   * \param	gamma		Alpha channel gamma, with < 0 implying that
+   * 				the gamma values are inverted.
+   */
+  this._lutFromColormap = function(cmap, gamma) {
+    var inverse = false;
+    if(gamma < 0) {
+      inverse = true;
+      gamma = -gamma;
+    }
+    var map_pts = undefined;
+    var lut = new Uint8Array(4 * 256);
+    switch(cmap)
+    {
+      case MARenderColormap.GREYSCALE:
+	map_pts = [[0x00, 0x00, 0x00],
+		   [0x40, 0x40, 0x40],
+		   [0x7f, 0x7f, 0x7f],
+		   [0xbf, 0xbf, 0xbf],
+		   [0xff, 0xff, 0xff]];
+	break;
+      case MARenderColormap.COOLTOWARM:
+	map_pts = [[0x00, 0xa0, 0xff],
+		   [0x30, 0x80, 0xa0],
+		   [0x90, 0x20, 0x20],
+		   [0xff, 0x40, 0x20],
+		   [0xff, 0xff, 0xa0]];
+	break;
+      case MARenderColormap.BLACKBODY:
+	map_pts = [[0x00, 0x00, 0x00],
+		   [0x80, 0x00, 0x00],
+		   [0xff, 0x40, 0x00],
+		   [0xff, 0xff, 0x00],
+		   [0xff, 0xff, 0xff]];
+	break;
+      case MARenderColormap.RAINBOW:
+	map_pts = [[0xff, 0x00, 0x00],
+		   [0x80, 0x80, 0x00],
+		   [0x00, 0xff, 0x00],
+		   [0x00, 0x80, 0x80],
+		   [0x40, 0x00, 0xff]];
+	break;
+      default:
+	break;
+    }
+    for(var idx = 0; idx < 256; ++idx) {
+      var r = idx;
+      var g = idx;
+      var b = idx;
+      var a = (255.0 * Math.pow(idx / 255.0, gamma)) | 0;
+      if(inverse)
+      {
+        a = 255 - a;
+      }
+      if(map_pts !== undefined) {
+	var p = (idx / 64) | 0;
+	var p1 = p + 1;
+	var q = idx - (p * 64);
+	var q1 = 64 - q;
+	var n = 64.0;
+	r = (((q1 * map_pts[p][0]) + (q * map_pts[p1][0])) / n) | 0;
+	g = (((q1 * map_pts[p][1]) + (q * map_pts[p1][1])) / n) | 0;
+	b = (((q1 * map_pts[p][2]) + (q * map_pts[p1][2])) / n) | 0;
+      }
+      var k = 4 * idx;
+      // console.log('lut[' + k + '] = ' +  r + ',' + g + ',' + b + ',' + a);
+      lut[k + 0] = r;
+      lut[k + 1] = g;
+      lut[k + 2] = b;
+      lut[k + 3] = a;
+    }
+    return(lut);
+  }
+
+  /*!
+   * \class     MARenderer
    * \return	Clamped point size.
    * \function  _pointSizeClamp
    * \brief	Clamps the given point size to the allowed range.
@@ -688,12 +806,7 @@ MARenderer = function(win, con) {
       if(child && (child.type === 'Points')) {
 	var mat = child.material;
 	if(mat) {
-	  if(mat.type == 'PointsMaterial') {
-	    update = true;
-	    mat.needsUpdate = true;
-	    mat.size = this.pointSize;
-	  }
-	  else if(mat.type =='AlphaPointsMaterial') {
+	  if(mat.type =='AlphaPointsMaterial') {
 	    update = true;
 	    mat.needsUpdate = true;
 	    mat.uniforms.scale.value = this.pointSize;
@@ -865,7 +978,9 @@ MARenderer = function(win, con) {
    */
   this._makeCameraControls = function() {
     var cc = new THREE.TrackballControls(this.camera, this.con);
+    cc.rotateSpeed = 2.0;
     cc.panSpeed = 0.3;
+    cc.zoomSpeed = 0.3
     cc.dynamicDampingFactor = 0.7;
     return(cc);
   }
@@ -906,105 +1021,96 @@ MARenderer = function(win, con) {
    * \param gProp	Properties to set in the given object.
    */
   this._updateObj = function(obj, gProp) {
-    var itm = new MARenderItem();
-    if(itm) {
-      if(gProp['color']) {
-	itm.color = gProp['color'];
-      } else if(obj.material && obj.material.color) {
-	itm.color = obj.material.color;
-      }
-      if(gProp['clipping'] !== undefined) {
-        if(gProp['clipping'] instanceof THREE.Plane) {
-	  var pln = new THREE.Plane().copy(gProp['clipping']);
-	  itm.clipping = [ pln ];
-        } else {
-	  itm.clipping = this.noClipPlanes;
+    if(obj.material) {
+      var udTex = false;
+      var upClut = false;
+      var mat = obj.material;
+      var mode = this._checkRenderMode(gProp['mode']);  // Always set mode.
+      for(var p in gProp) {
+	switch(p) {
+	  case 'color':
+	    if(mat.color !== undefined) {
+	      mat.color = gProp[p];
+	    }
+	    break;
+	  case 'colormap':
+	    if(mat.colormap !== undefined) {
+	      upClut = true;
+	      mat.colormap = gProp[p];
+	    }
+	    break;
+	  case 'clipping':
+	    if(mat.clipping !== undefined) {
+	      mat.clipping = gProp[p];
+	    }
+	    break;
+	  case 'gamma':
+	    if(mat.gamma !== undefined) {
+	      upClut = true;
+	      mat.gamma = gProp[p];
+	    }
+	    break;
+	  case 'opacity':
+	    if(mat.opacity !== undefined) {
+	      mat.opacity = gProp[p];
+	    }
+	    break;
+	  case 'transparent':
+	    if(mat.transparent !== undefined) {
+	      mat.transparent = gProp[p];
+	    }
+	    break;
+	  case 'side':
+	    if(mat.side !== undefined) {
+	      mat.side = gProp[p];
+	    }
+	    break;
+	  case 'visible':
+	    mat.visible = gProp[p];
+	    break;
+	  case 'texture':
+	    udTex = true;
+	    break;
+	  case 'vertices':
+	    udTex = true;
+            break;
+	  default:
+	    break;
 	}
-      } else if(obj.material) {
-	itm.clipping = obj.material.clippingPlanes;
       }
-      if(gProp['opacity']) {
-	itm.opacity = gProp['opacity'];
-      } else if(obj.material && obj.material.opacity) {
-	itm.opacity = obj.material.opacity;
-      }
-      if(gProp['transparent'] !== undefined) {
-	itm.transparent = gProp['transparent'];
-      } else if(obj.material && obj.material.transparent) {
-	itm.transparent = obj.material.transparent;
-      }
-      if(gProp['side'] !== undefined) {
-	itm.side = gProp['side'];
-      } else if(obj.material) {
-        itm.side = obj.material.side;
-      }
-      if(gProp['visible'] !== undefined) {
-	itm.visible = gProp['visible'];
-      } else if(obj.material) {
-        itm.visible = obj.material.visible;
-      }
-      if(gProp['texture']) {
-	itm.texture = gProp['texture'].slice(0);
-      }
-      if(gProp['vertices']) {
-	itm.vertices = gProp['vertices'].slice(0);
-      }
-      if(gProp['mode']) {
-	// Always set the mode/material type
-	var mode = this._checkRenderMode(gProp['mode']);
-	if(mode) {
-	  itm.mode = mode;
-	}
-      } else {
-        if(obj.type === 'Points') {
-	  itm.mode = MARenderMode.POINT;
-	} else if(obj.material && (obj.material.map)) {
-	  itm.mode = MARenderMode.SECTION;
-	}
-      }
-    }
-    switch(Number(itm.mode)) {
-      case MARenderMode.BASIC:
-      case MARenderMode.WIREFRAME:
-      case MARenderMode.LAMBERT:
-      case MARenderMode.PHONG:
-      case MARenderMode.EMISSIVE:
-      case MARenderMode.POINT:
-        var mat = this._makeMaterial(obj.geometry, itm);
-	var oldmat = obj.material;
-	obj.material = mat;
-	if(oldmat) {
-	  oldmat.dispose();
-	}
-	break;
-      case MARenderMode.SECTION:
-	{
-	  obj.material.visible = itm.visible;
-	  obj.material.opacity = itm.opacity;
-	  if(itm.texture) {
-	    THREE.ImageUtils.loadTexture(itm.texture,
-		THREE.UVMapping,
-		function(tex) {
-		  // onLoad
-		  var oldgeom = obj.geometry;
-		  var oldtex = obj.material.map;
-		  var geom = self.makeSectionGeometry(itm.vertices);
-		  tex.flipY = false;
-		  tex.minFilter = THREE.LinearFilter;
-		  tex.needsUpdate = true;
-		  obj.material.map = tex;
-		  obj.geometry = geom;
-		  oldtex.dispose();
-		  oldgeom.dispose();
-		  self.makeLive();
-		},
-		function() {
-	          console.log('MARenderer.updateObj() texture load failed: ' +
-		              itm.texture);
-		});
+      switch(Number(mode)) {
+	case MARenderMode.POINT:
+	  if(upClut) {
 	  }
-	}
-	break;
+	  break;
+	case MARenderMode.SECTION:
+	  if(udTex) {
+	      THREE.ImageUtils.loadTexture(gProp['texture'],
+		  THREE.UVMapping,
+		  function(tex) {
+		    // onLoad
+		    var oldtex = obj.material.map;
+		    if(gProp['vertices'] !== undefined) {
+		      var oldgeom = obj.geometry;
+		      oldgeom.dispose();
+		      var geom = self.makeSectionGeometry(gProp['vertices']);
+		      obj.geometry = geom;
+		    }
+		    tex.flipY = false;
+		    tex.minFilter = THREE.LinearFilter
+		    tex.needsUpdate = true;
+		    obj.material.map = tex;
+		    oldtex.dispose();
+		    self.makeLive();
+		  },
+		  function() {
+		    console.log('MARenderer.updateObj() ' +
+		                'texture load failed: ' +
+				itm.texture);
+		  });
+	  }
+	  break;
+      }
     }
   }
 
@@ -1077,6 +1183,12 @@ MARenderer = function(win, con) {
 	    itm.clipping = this.noClipPlanes;
 	  }
 	  break;
+	case 'colormap':
+	  itm[p] = gProp[p];
+	  break;
+	case 'gamma':
+	  itm[p] = gProp[p];
+	  break;
         default:
 	  ok = false;
 	  console.log('MARenderer._makeRenderItem() unknown property: ' + p);
@@ -1123,6 +1235,7 @@ MARenderer = function(win, con) {
    * \return	New material.
    * \brief	Makes a new material using the properties of the given render
    * 		item.
+   * \param geom	Given geometry.
    * \param itm		Given render item.
    */
   this._makeMaterial = function(geom, itm) {
@@ -1176,7 +1289,7 @@ MARenderer = function(win, con) {
 	sProp['visible'] = itm.visible;
 	sProp['clippingPlanes'] = itm.clipping;
 	sProp['transparent'] = itm.transparent;
-	sProp['specular'] =0x777777;
+	sProp['specular'] = 0x777777;
 	sProp['wireframe'] = false;
 	sProp['emissive'] = itm.color;
 	sProp['shininess'] = 15;
@@ -1195,20 +1308,16 @@ MARenderer = function(win, con) {
 	sProp['blendDst'] = THREE.DstAlphaFactor;
 	sProp['blendEquation'] = THREE.AddEquation;
 	sProp['alphaTest'] = 0.1;
-	sProp['map'] =        THREE.ImageUtils.loadTexture(
-	    'data:image/png;base64,' +
-	    'iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAQAAABuBnYAAAAAAmJLR0QA/4eP' +
-	    'zL8AAAAJcEhZcwAACxMAAAsTAQCanBgAAAAHdElNRQfgAg8MNSkRqlGqAAAA' +
-	    'VElEQVQI113NQQ0DIRBA0TcEFYQTSVWsAHRUWXUgoDY4bbAxPfS2X8D7ATk1' +
-	    'nFhU8u0ysLPFp+Z0mTpe5CmaoYNuaMWj4thucNtOjZWNP+obK57bH17lGKmO' +
-	    'V2FkAAAAAElFTkSuQmCC')
-	if((geom.attributes.colors !== undefined) &&
-	   (geom.attributes.colors.array.length > 0)) {
-	  mat = new AlphaPointsMaterial(sProp);
-	  mat.vertexColors = THREE.VertexColors;
-	} else {
-	  mat = new THREE.PointsMaterial(sProp);
-	}
+	sProp['gamma'] = itm.gamma;
+	sProp['colormap'] = itm.colormap;
+	sProp['clut'] = new THREE.DataTexture(
+			    this._lutFromColormap(itm.colormap, itm.gamma),
+			    256, 1, THREE.RGBAFormat);
+        sProp['clut'].needsUpdate = true;
+	mat = new AlphaPointsMaterial(sProp);
+	mat.vertexColors = THREE.VertexColors;
+	mat.uniforms.point_scalars_set.value =
+			  (geom.attributes.point_scalars !== undefined);
 	break;
       case MARenderMode.SECTION:
 	sProp['color'] = itm.color;
@@ -1283,7 +1392,7 @@ MARenderer = function(win, con) {
       {
         max = box.max.z;
       }
-      this.center.copy(box.center());
+      this.center.copy(box.getCenter());
       this.nearPlane = (min < 0.2)? 0.1: min * 0.5;
       this.farPlane =  (max < 1.0)? 10.0: max * 10.0;
       this.cameraPos.set(0, 0, this.center.z + (4.0 * dMax));
