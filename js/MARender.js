@@ -44,18 +44,9 @@ MARenderMode = {
   PHONG:                3,
   EMISSIVE:             4,
   POINT:		5,
-  SECTION:		6
-}
-
-/**
-* Color look up tables.
-*/
-MARenderColormap = {
-  CUSTOM:		0,
-  GREYSCALE:		1,
-  COOLTOWARM:           2,
-  BLACKBODY:		3,
-  RAINBOW:		4
+  SECTION:		6,
+  MARKER:		7,
+  LABEL:		8
 }
 
 /**
@@ -70,13 +61,42 @@ MARenderItem = function() {
   this.transparent      = false;
   this.opacity          = 1.0;
   this.mode             = MARenderMode.PHONG;
-  this.colormap 	= MARenderColormap.GREYSCALE;
-  this.gamma            = 1.0,
   this.vertices		= undefined;
+  this.position		= new THREE.Vector3(0, 0, 0); /* Used for text and
+  							 markers. */
+  this.text		= undefined;
   this.texture		= undefined;
   this.visible          = true;
   this.clipplane        = undefined;
 }
+
+/**
+* Font description.
+*/
+MARenderFont = function() {
+  this.family		= 'Arial';
+  this.weight		= 'Bold';
+  this.size		= 64;
+}
+
+/**
+* Marker material.
+*/
+MARenderMarkerMaterial = function() {
+  THREE.SpriteMaterial.apply(this, arguments);
+}
+MARenderMarkerMaterial.prototype = Object.create(THREE.SpriteMaterial.prototype);
+MARenderMarkerMaterial.prototype.constructor = MARenderMarkerMaterial;
+
+/**
+* Label material
+*/
+MARenderLabelMaterial = function() {
+  MARenderMarkerMaterial.apply(this, arguments);
+  this.text = undefined;
+}
+MARenderLabelMaterial.prototype = Object.create(MARenderMarkerMaterial.prototype);
+MARenderLabelMaterial.prototype.constructor = MARenderLabelMaterial;
 
 /**
 * Enough of a camera state to restore position.
@@ -88,27 +108,91 @@ MARenderCameraState = function() {
 }
 
 /**
+* Look up tables.
+*/
+MARenderColormap = {
+  CUSTOM:		0,
+  GREYSCALE:		1,
+  COOLTOWARM:           2,
+  BLACKBODY:		3,
+  RAINBOW:		4
+}
+
+MARenderLookUpTable = function(colormap) {
+  this.type = 'MARenderer';
+  this.colormap = colormap;
+  this.map = new Array(256);
+  var mappts = undefined;
+
+  switch(self.colormap)
+  {
+    case MARenderColormap.GREYSCALE:
+      mappts = [[0x00, 0x00, 0x00],
+                [0x40, 0x40, 0x40]
+                [0x7f, 0xf0, 0xf0]
+                [0xbf, 0xbf, 0xbf]
+                [0xff, 0xff, 0xff]];
+      break;
+    case MARenderColormap.COOLTOWARM:
+      mappts = [[0x00, 0x00, 0x00],
+                [0x40, 0x40, 0x40]
+                [0x7f, 0xf0, 0xf0]
+                [0xbf, 0xbf, 0xbf]
+                [0xff, 0xff, 0xff]];
+      break;
+    case MARenderColormap.BLACKBODY:
+      mappts = [[0x00, 0x00, 0x00],
+                [0x80, 0x00, 0x00]
+                [0xff, 0x40, 0x00]
+                [0xff, 0xff, 0x00]
+                [0xff, 0xff, 0xff]];
+      break;
+    case MARenderColormap.RAINBOW:
+      mappts = [[0x00, 0x00, 0xff],
+                [0x00, 0xff, 0xff]
+                [0x00, 0xff, 0x00]
+                [0xff, 0xff, 0x00]
+                [0xff, 0x00, 0xff]];
+      break;
+    default:
+      break;
+  }
+  if(mappts !== undefined) {
+    for(var idx = 0; idx < 256; ++idx) {
+      var p = (idx / 64) | 0;
+      var p1 = p + 1;
+      var q = idx - (p * 64);
+      var q1 = 64 - q;
+      var n = 64.0 * 255.0;
+      var r = ((q1 * mappts[p][0]) + (q * mappts[p1][0])) / n;
+      var g = ((q1 * mappts[p][1]) + (q * mappts[p1][1])) / n;
+      var b = ((q1 * mappts[p][2]) + (q * mappts[p1][2])) / n;
+      map.append(new THREE.Color(r, g, b));
+    }
+  }
+}
+
+/**
 * Point rendering material
 */
 AlphaPointsMaterial = function(params) {
   var vertexShader = [
     //AlphaPoint vertex shader
+    'attribute float sizes;',
+    'attribute float opacities;',
+    'attribute vec3 colors;',
     'uniform float scale;',
-    'uniform bool point_scalars_set;',
-    'attribute float point_scalars;',
-    'varying float vScalar;',
+    'varying vec3 vColor;',
+    'varying float vOpacity;',
     '#include <common>',
     //'#include <logdepthbuf_pars_vertex>',
     '#include <clipping_planes_pars_vertex>',
     'void main() {',
+      'vColor = colors;',
+      'vOpacity = opacities;',
       '#include <begin_vertex>',
       '#include <project_vertex>',
-      'if(point_scalars_set) {',
-        'vScalar = point_scalars;',
-      '} else {',
-        'vScalar = 1.0;',
-      '}',
-      'gl_PointSize = 512.0 * vScalar * scale / length(mvPosition.xyz);',
+      'gl_PointSize = 512.0 * sizes * scale / length(mvPosition.xyz);',
       '#include <clipping_planes_vertex>',
     '}'
   ].join('\n');
@@ -117,46 +201,33 @@ AlphaPointsMaterial = function(params) {
     'uniform vec3 diffuse;',
     'uniform float opacity;',
     'uniform sampler2D map;',
-    'uniform sampler2D clut;',
-    'varying float vScalar;',
+    'varying vec3 vColor;',
+    'varying float vOpacity;',
     '#include <common>',
     '#include <clipping_planes_pars_fragment>',
     'void main() {',
       '#include <clipping_planes_fragment>',
-      'float sd, cw;',
-      'vec2 sp;',
-      'sp = 2.0 * gl_PointCoord - 1.0;',
-      'sd = 1.0 - length(sp);',
-      'cw = (sd + 3.0) / 4.0;',
-      'gl_FragColor = vec4(diffuse, opacity * vScalar * sd);',
-      'gl_FragColor = gl_FragColor * texture2D(clut, vec2(vScalar * cw, .0));',
+      'gl_FragColor = vec4(diffuse * vColor, opacity * vOpacity);',
+      'gl_FragColor = gl_FragColor * texture2D(map, gl_PointCoord);',
       'if(gl_FragColor.a < ALPHATEST) {',
         'discard;',
       '}',
     '}'
   ].join('\n');
   var splitParam = [ {
-    uniforms: THREE.UniformsUtils.merge([
-                  THREE.UniformsUtils.clone(THREE.UniformsLib['points']),
-		  {point_scalars_set: {type: 'i', value: 0}},
-		  {clut: {type: 't', value: null}}]),
+    uniforms: THREE.UniformsUtils.clone(THREE.UniformsLib['points']),
     vertexShader: vertexShader,
     fragmentShader: fragmentShader
-  }, {}, {}];
-
+  }, {}];
   for(var p in params) {
     switch(p) {
-      case 'clut':
+      case 'map':
       case 'color':
-	splitParam[2][p] = params[p];
+	splitParam[1][p] = params[p];
 	break
       case 'scale':
       case 'size':
-        splitParam[2]['scale'] = params[p];
-	break;
-      case 'gamma':
-      case 'colormap':
-        splitParam[1][p] = params[p];
+        splitParam[1]['scale'] = params[p];
 	break;
       default:
 	splitParam[0][p] = params[p];
@@ -164,29 +235,18 @@ AlphaPointsMaterial = function(params) {
     }
   }
   var material = new THREE.ShaderMaterial(splitParam[0]);
-  var def = new MARenderItem()
   material.type = 'AlphaPointsMaterial';
-  material.gamma = def.gamma;
-  material.colormap = def.colormap;
   for(var p in splitParam[1]) {
     switch(p) {
-      case 'gamma':
-      case 'colormap':
-        material.colormap = splitParam[1][p];
-	break;
-    }
-  }
-  for(var p in splitParam[2]) {
-    switch(p) {
-      case 'clut':
-	material.uniforms.clut.value = splitParam[2]['clut'];
-	break;
       case 'color':
 	material.uniforms.diffuse.value = new THREE.Color(
-	                                      splitParam[2]['color']);
+	                                      splitParam[1]['color']);
+	break;
+      case 'map':
+	material.uniforms.map.value = splitParam[1]['map'];
 	break;
       case 'scale':
-	material.uniforms.scale.value = splitParam[2]['scale'];
+	material.uniforms.scale.value = splitParam[1]['scale'];
 	break;
     }
   }
@@ -216,6 +276,7 @@ MARenderer = function(win, con) {
   this.renderer;
   this.animCount = 0;    // Used to count animation frames since mouse movement
   this.pointSize = 10;
+  this.markerSize = 50;
   this.mousePos = new THREE.Vector2(0,0);
   this.pickOfs = 0;
   this.nearPlane = 1;
@@ -232,6 +293,8 @@ MARenderer = function(win, con) {
   this.noClipPlanes = Object.freeze([]);
   this.globalClipping = false;
   this.globalClipPlanes = this.noClipPlanes;
+  this.markerAspect = [0.3, 1.0];
+  this.labelFont = new MARenderFont();
 
 
   THREE.ImageUtils.crossOrigin = ''; // To allow CORS textures
@@ -374,16 +437,17 @@ MARenderer = function(win, con) {
 		if(mat) {
 		  switch(Number(itm.mode)) {
 		    case MARenderMode.POINT:
-		      var obj = new THREE.Points(geom, mat);
-		      obj.name = itm.name;
-		      obj.sortParticles = true;
+		      var pnts = new THREE.Points(geom, mat);
+		      pnts.name = itm.name;
+		      pnts.sortParticles = true;
+		      self.scene.add(pnts);
 		      break;
 		    default:
-		      var obj = new THREE.Mesh(geom, mat);
-		      obj.name = itm.name;
+		      var mesh = new THREE.Mesh(geom, mat);
+		      mesh.name = itm.name;
+		      self.scene.add(mesh);
 		      break;
 		  }
-		  self.scene.add(obj);
 		  if(self.setCamOnLoad) {
 		    self._computeCenter();
 		    self.setCamera();
@@ -424,6 +488,22 @@ MARenderer = function(win, con) {
 		 });
 	  }
 	  break;
+	case MARenderMode.MARKER:
+	case MARenderMode.LABEL:
+	  var geom = undefined;
+	  var mat = self._makeMaterial(geom, itm);
+	  var mrk = new THREE.Sprite(mat);
+	  if(itm.mode == MARenderMode.LABEL) {
+	    mrk.scale.set(this.markerSize, this.markerSize, 1.0);
+	  } else {
+	    mrk.scale.set(this.markerSize * this.markerAspect[0],
+			  this.markerSize * this.markerAspect[1], 1.0);
+	  }
+	  mrk.name = itm.name;
+	  mrk.position.set(itm.position.x, itm.position.y, itm.position.z);
+          self.scene.add(mrk);
+	  self.makeLive();
+	  break;
 	default:
 	  break;
       }
@@ -447,6 +527,14 @@ MARenderer = function(win, con) {
       }
     }
     this.render();
+  }
+
+  this.makeMarkerGeometry = function(vertices) {
+    var geom = new THREE.Geometry();
+    if(vertices) {
+      
+    }
+    
   }
 
   /*!
@@ -692,87 +780,6 @@ MARenderer = function(win, con) {
 
   /*!
    * \class     MARenderer
-   * \return	Color lookup table array.
-   * \function  _lutFromColormap
-   * \brief	Creates a new array with 256 RGBA entries for use in generating
-   * 		a color lookup table. The array is set using the given defined
-   * 		colormap.
-   * \param	colormap	Given colormap.
-   * \param	gamma		Alpha channel gamma, with < 0 implying that
-   * 				the gamma values are inverted.
-   */
-  this._lutFromColormap = function(cmap, gamma) {
-    var inverse = false;
-    if(gamma < 0) {
-      inverse = true;
-      gamma = -gamma;
-    }
-    var map_pts = undefined;
-    var lut = new Uint8Array(4 * 256);
-    switch(cmap)
-    {
-      case MARenderColormap.GREYSCALE:
-	map_pts = [[0x00, 0x00, 0x00],
-		   [0x40, 0x40, 0x40],
-		   [0x7f, 0x7f, 0x7f],
-		   [0xbf, 0xbf, 0xbf],
-		   [0xff, 0xff, 0xff]];
-	break;
-      case MARenderColormap.COOLTOWARM:
-	map_pts = [[0x00, 0xa0, 0xff],
-		   [0x30, 0x80, 0xa0],
-		   [0x90, 0x20, 0x20],
-		   [0xff, 0x40, 0x20],
-		   [0xff, 0xff, 0xa0]];
-	break;
-      case MARenderColormap.BLACKBODY:
-	map_pts = [[0x00, 0x00, 0x00],
-		   [0x80, 0x00, 0x00],
-		   [0xff, 0x40, 0x00],
-		   [0xff, 0xff, 0x00],
-		   [0xff, 0xff, 0xff]];
-	break;
-      case MARenderColormap.RAINBOW:
-	map_pts = [[0xff, 0x00, 0x00],
-		   [0x80, 0x80, 0x00],
-		   [0x00, 0xff, 0x00],
-		   [0x00, 0x80, 0x80],
-		   [0x40, 0x00, 0xff]];
-	break;
-      default:
-	break;
-    }
-    for(var idx = 0; idx < 256; ++idx) {
-      var r = idx;
-      var g = idx;
-      var b = idx;
-      var a = (255.0 * Math.pow(idx / 255.0, gamma)) | 0;
-      if(inverse)
-      {
-        a = 255 - a;
-      }
-      if(map_pts !== undefined) {
-	var p = (idx / 64) | 0;
-	var p1 = p + 1;
-	var q = idx - (p * 64);
-	var q1 = 64 - q;
-	var n = 64.0;
-	r = (((q1 * map_pts[p][0]) + (q * map_pts[p1][0])) / n) | 0;
-	g = (((q1 * map_pts[p][1]) + (q * map_pts[p1][1])) / n) | 0;
-	b = (((q1 * map_pts[p][2]) + (q * map_pts[p1][2])) / n) | 0;
-      }
-      var k = 4 * idx;
-      // console.log('lut[' + k + '] = ' +  r + ',' + g + ',' + b + ',' + a);
-      lut[k + 0] = r;
-      lut[k + 1] = g;
-      lut[k + 2] = b;
-      lut[k + 3] = a;
-    }
-    return(lut);
-  }
-
-  /*!
-   * \class     MARenderer
    * \return	Clamped point size.
    * \function  _pointSizeClamp
    * \brief	Clamps the given point size to the allowed range.
@@ -806,7 +813,12 @@ MARenderer = function(win, con) {
       if(child && (child.type === 'Points')) {
 	var mat = child.material;
 	if(mat) {
-	  if(mat.type =='AlphaPointsMaterial') {
+	  if(mat.type == 'PointsMaterial') {
+	    update = true;
+	    mat.needsUpdate = true;
+	    mat.size = this.pointSize;
+	  }
+	  else if(mat.type =='AlphaPointsMaterial') {
 	    update = true;
 	    mat.needsUpdate = true;
 	    mat.uniforms.scale.value = this.pointSize;
@@ -828,6 +840,52 @@ MARenderer = function(win, con) {
   this.pointSizeIncrement = function(inc) {
     this.pointSize = this._pointSizeClamp(this.pointSize * (1.0 + inc));
     this.pointSizeSet();
+  }
+
+  /*!
+   * \class     MARenderer
+   * \return	Clamped marker size.
+   * \function  _markerSizeClamp
+   * \brief	Clamps the given marker size to the allowed range.
+   * \param	sz	Given marker size.
+   */
+  this._markerSizeClamp = function(sz) {
+    if(sz > 199.9) {
+      sz = 199.9;
+    }
+    else if(sz < 0.1) {
+      sz = 0.1;
+    }
+    return(sz);
+  }
+
+  /*!
+   * \class	MARenderer
+   * \function	pointSizeSet
+   * \brief	Sets the current default marker size and the marker size of
+   * 		all marker models.
+   * \param sz		Given marker size. By default the current marker size
+   * 			is used.
+   */
+  this.markerSizeSet = function(sz) {
+    var update = false;
+    if(sz !== undefined) {
+      this.markerSize = this._markerSizeClamp(sz);
+    }
+    for(var i = 0, l = this.scene.children.length; i < l; i ++ ) {
+      var child = this.scene.children[i];
+      if(child && (child.type === 'Sprite')) {
+	if(child.material.text) {
+	  child.scale.set(this.markerSize, this.markerSize, 1.0);
+	} else {
+	  child.scale.set(this.markerSize * this.markerAspect[0],
+			  this.markerSize * this.markerAspect[1], 1.0);
+        }
+      }
+    }
+    if(update) {
+      this.render();
+    }
   }
 
   /*!
@@ -978,9 +1036,7 @@ MARenderer = function(win, con) {
    */
   this._makeCameraControls = function() {
     var cc = new THREE.TrackballControls(this.camera, this.con);
-    cc.rotateSpeed = 2.0;
     cc.panSpeed = 0.3;
-    cc.zoomSpeed = 0.3
     cc.dynamicDampingFactor = 0.7;
     return(cc);
   }
@@ -1021,96 +1077,135 @@ MARenderer = function(win, con) {
    * \param gProp	Properties to set in the given object.
    */
   this._updateObj = function(obj, gProp) {
-    if(obj.material) {
-      var udTex = false;
-      var upClut = false;
-      var mat = obj.material;
-      var mode = this._checkRenderMode(gProp['mode']);  // Always set mode.
-      for(var p in gProp) {
-	switch(p) {
-	  case 'color':
-	    if(mat.color !== undefined) {
-	      mat.color = gProp[p];
+    var itm = new MARenderItem();
+    if(itm) {
+      if(gProp['color']) {
+	itm.color = gProp['color'];
+      } else if(obj.material && obj.material.color) {
+	itm.color = obj.material.color;
+      }
+      if(gProp['clipping'] !== undefined) {
+        if(gProp['clipping'] instanceof THREE.Plane) {
+	  var pln = new THREE.Plane().copy(gProp['clipping']);
+	  itm.clipping = [ pln ];
+        } else {
+	  itm.clipping = this.noClipPlanes;
+	}
+      } else if(obj.material) {
+	itm.clipping = obj.material.clippingPlanes;
+      }
+      if(gProp['opacity']) {
+	itm.opacity = gProp['opacity'];
+      } else if(obj.material && obj.material.opacity) {
+	itm.opacity = obj.material.opacity;
+      }
+      if(gProp['transparent'] !== undefined) {
+	itm.transparent = gProp['transparent'];
+      } else if(obj.material && obj.material.transparent) {
+	itm.transparent = obj.material.transparent;
+      }
+      if(gProp['side'] !== undefined) {
+	itm.side = gProp['side'];
+      } else if(obj.material) {
+        itm.side = obj.material.side;
+      }
+      if(gProp['visible'] !== undefined) {
+	itm.visible = gProp['visible'];
+      } else if(obj.material) {
+        itm.visible = obj.material.visible;
+      }
+      if(gProp['texture']) {
+	itm.texture = gProp['texture'].slice(0);
+      }
+      if(gProp['vertices']) {
+	itm.vertices = gProp['vertices'].slice(0);
+      }
+      if(gProp['position']) {
+	itm.position = gProp['position'];
+      } else if(obj.type === 'Sprite') {
+        itm.position = obj.position;
+      }
+      if(gProp['text']) {
+	itm.text = gProp['text'];
+      } else if((obj.type === 'Sprite') && obj.material && obj.material.text) {
+        itm.text = obj.material.text;
+      }
+      if(gProp['mode']) {
+	// Always set the mode/material type
+	var mode = this._checkRenderMode(gProp['mode']);
+	if(mode) {
+	  itm.mode = mode;
+	}
+      } else {
+        if(obj.type === 'Points') {
+	  itm.mode = MARenderMode.POINT;
+	} else if(obj.material) {
+	  if(obj.material.type === 'SpriteMaterial') {
+	    if(obj.material.text) {
+	      itm.mode = MARenderMode.LABEL;
+	    } else {
+	      itm.mode = MARenderMode.MARKER;
 	    }
-	    break;
-	  case 'colormap':
-	    if(mat.colormap !== undefined) {
-	      upClut = true;
-	      mat.colormap = gProp[p];
-	    }
-	    break;
-	  case 'clipping':
-	    if(mat.clipping !== undefined) {
-	      mat.clipping = gProp[p];
-	    }
-	    break;
-	  case 'gamma':
-	    if(mat.gamma !== undefined) {
-	      upClut = true;
-	      mat.gamma = gProp[p];
-	    }
-	    break;
-	  case 'opacity':
-	    if(mat.opacity !== undefined) {
-	      mat.opacity = gProp[p];
-	    }
-	    break;
-	  case 'transparent':
-	    if(mat.transparent !== undefined) {
-	      mat.transparent = gProp[p];
-	    }
-	    break;
-	  case 'side':
-	    if(mat.side !== undefined) {
-	      mat.side = gProp[p];
-	    }
-	    break;
-	  case 'visible':
-	    mat.visible = gProp[p];
-	    break;
-	  case 'texture':
-	    udTex = true;
-	    break;
-	  case 'vertices':
-	    udTex = true;
-            break;
-	  default:
-	    break;
+	  } else {
+	    itm.mode = MARenderMode.SECTION;
+	  }
 	}
       }
-      switch(Number(mode)) {
-	case MARenderMode.POINT:
-	  if(upClut) {
+    }
+    switch(Number(itm.mode)) {
+      case MARenderMode.BASIC:
+      case MARenderMode.WIREFRAME:
+      case MARenderMode.LAMBERT:
+      case MARenderMode.PHONG:
+      case MARenderMode.EMISSIVE:
+      case MARenderMode.POINT:
+        var mat = this._makeMaterial(obj.geometry, itm);
+	var oldmat = obj.material;
+	obj.material = mat;
+	if(oldmat) {
+	  oldmat.dispose();
+	}
+	break;
+      case MARenderMode.SECTION:
+	{
+	  obj.material.visible = itm.visible;
+	  obj.material.opacity = itm.opacity;
+	  if(itm.texture) {
+	    THREE.ImageUtils.loadTexture(itm.texture,
+		THREE.UVMapping,
+		function(tex) {
+		  // onLoad
+		  var oldgeom = obj.geometry;
+		  var oldtex = obj.material.map;
+		  var geom = self.makeSectionGeometry(itm.vertices);
+		  tex.flipY = false;
+		  tex.minFilter = THREE.LinearFilter;
+		  tex.needsUpdate = true;
+		  obj.material.map = tex;
+		  obj.geometry = geom;
+		  oldtex.dispose();
+		  oldgeom.dispose();
+		  self.makeLive();
+		},
+		function() {
+	          console.log('MARenderer.updateObj() texture load failed: ' +
+		              itm.texture);
+		});
 	  }
-	  break;
-	case MARenderMode.SECTION:
-	  if(udTex) {
-	      THREE.ImageUtils.loadTexture(gProp['texture'],
-		  THREE.UVMapping,
-		  function(tex) {
-		    // onLoad
-		    var oldtex = obj.material.map;
-		    if(gProp['vertices'] !== undefined) {
-		      var oldgeom = obj.geometry;
-		      oldgeom.dispose();
-		      var geom = self.makeSectionGeometry(gProp['vertices']);
-		      obj.geometry = geom;
-		    }
-		    tex.flipY = false;
-		    tex.minFilter = THREE.LinearFilter
-		    tex.needsUpdate = true;
-		    obj.material.map = tex;
-		    oldtex.dispose();
-		    self.makeLive();
-		  },
-		  function() {
-		    console.log('MARenderer.updateObj() ' +
-		                'texture load failed: ' +
-				itm.texture);
-		  });
-	  }
-	  break;
-      }
+	}
+	break;
+      case MARenderMode.MARKER:
+      case MARenderMode.LABEL:
+        var mat = this._makeMaterial(obj.geometry, itm);
+	var oldmat = obj.material;
+	obj.material = mat;
+	if(oldmat) {
+	  oldmat.dispose();
+	}
+	if(itm.position) {
+	  obj.position.set(itm.position.x, itm.position.y, itm.position.z);
+	}
+	break;
     }
   }
 
@@ -1183,10 +1278,10 @@ MARenderer = function(win, con) {
 	    itm.clipping = this.noClipPlanes;
 	  }
 	  break;
-	case 'colormap':
+	case 'position':
 	  itm[p] = gProp[p];
 	  break;
-	case 'gamma':
+	case 'text':
 	  itm[p] = gProp[p];
 	  break;
         default:
@@ -1219,6 +1314,8 @@ MARenderer = function(win, con) {
 	case MARenderMode.EMISSIVE:
 	case MARenderMode.POINT:
 	case MARenderMode.SECTION:
+	case MARenderMode.MARKER:
+	case MARenderMode.LABEL:
 	  rMode = gMode;
 	  break;
 	default:
@@ -1235,7 +1332,6 @@ MARenderer = function(win, con) {
    * \return	New material.
    * \brief	Makes a new material using the properties of the given render
    * 		item.
-   * \param geom	Given geometry.
    * \param itm		Given render item.
    */
   this._makeMaterial = function(geom, itm) {
@@ -1289,7 +1385,7 @@ MARenderer = function(win, con) {
 	sProp['visible'] = itm.visible;
 	sProp['clippingPlanes'] = itm.clipping;
 	sProp['transparent'] = itm.transparent;
-	sProp['specular'] = 0x777777;
+	sProp['specular'] =0x777777;
 	sProp['wireframe'] = false;
 	sProp['emissive'] = itm.color;
 	sProp['shininess'] = 15;
@@ -1308,16 +1404,21 @@ MARenderer = function(win, con) {
 	sProp['blendDst'] = THREE.DstAlphaFactor;
 	sProp['blendEquation'] = THREE.AddEquation;
 	sProp['alphaTest'] = 0.1;
-	sProp['gamma'] = itm.gamma;
-	sProp['colormap'] = itm.colormap;
-	sProp['clut'] = new THREE.DataTexture(
-			    this._lutFromColormap(itm.colormap, itm.gamma),
-			    256, 1, THREE.RGBAFormat);
-        sProp['clut'].needsUpdate = true;
-	mat = new AlphaPointsMaterial(sProp);
-	mat.vertexColors = THREE.VertexColors;
-	mat.uniforms.point_scalars_set.value =
-			  (geom.attributes.point_scalars !== undefined);
+	var tx = THREE.ImageUtils.loadTexture(
+	    'data:image/png;base64,' +
+	    'iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAQAAABuBnYAAAAAAmJLR0QA/4eP' +
+	    'zL8AAAAJcEhZcwAACxMAAAsTAQCanBgAAAAHdElNRQfgAg8MNSkRqlGqAAAA' +
+	    'VElEQVQI113NQQ0DIRBA0TcEFYQTSVWsAHRUWXUgoDY4bbAxPfS2X8D7ATk1' +
+	    'nFhU8u0ysLPFp+Z0mTpe5CmaoYNuaMWj4thucNtOjZWNP+obK57bH17lGKmO' +
+	    'V2FkAAAAAElFTkSuQmCC');
+	sProp['map'] = tx;
+	if((geom.attributes.colors !== undefined) &&
+	   (geom.attributes.colors.array.length > 0)) {
+	  mat = new AlphaPointsMaterial(sProp);
+	  mat.vertexColors = THREE.VertexColors;
+	} else {
+	  mat = new THREE.PointsMaterial(sProp);
+	}
 	break;
       case MARenderMode.SECTION:
 	sProp['color'] = itm.color;
@@ -1329,6 +1430,58 @@ MARenderer = function(win, con) {
 	sProp['wireframe'] = false;
 	sProp['side'] = THREE.DoubleSide;
 	mat = new THREE.MeshBasicMaterial(sProp);
+	break;
+      case MARenderMode.MARKER:
+      case MARenderMode.LABEL:
+        sProp['color'] = itm.color;
+        sProp['opacity'] = itm.opacity;
+	sProp['visible'] = itm.visible;
+	sProp['transparent'] = itm.transparent;
+	sProp['alphaTest'] = 0.1;
+	sProp['clippingPlanes'] = itm.clipping;
+	if(itm.mode === MARenderMode.MARKER) {
+	  var tx = THREE.ImageUtils.loadTexture(
+	      'data:image/png;base64,' +
+	      'iVBORw0KGgoAAAANSUhEUgAAAMAAAAIAAQMAAADuZfHZAAAABlBMVEUAAAD' +
+	      '///+l2Z/dAAAAAXRSTlMAQObYZgAAAAFiS0dEAIgFHUgAAAAJcEhZcwAACx' +
+	      'MAAAsTAQCanBgAAAAHdElNRQfkCRUQCRIVi1+ZAAADLUlEQVRo3u2ZQZKjM' +
+	      'AxFoVh46SNwFB8NH81H8RFYsnDZPckEkGR9AjXVmyn9VVdeEvsrWJbUw3Cq' +
+	      'tThoak0n8wuU/vWxvZX0D7S2qSu8JF+fdpD1b+qXX5r+Xcc3yX35E6wMhBM' +
+	      'UsARfZCSvs0UcBVlfm0clUFDB2nR1tjb9tSYOsr429T5zsOmbotvimyLbEq' +
+	      '8f2xolSFqk6H69BKu+23O/QYICdnsY6UADNnYjYw+SFvTTiOvBqvvbwdyDD' +
+	      'YGiG98dLgg0RRBE3fhf69N3kEYWE0fsehVEspGVhKrQKGwEZBrpjbwp0h+t' +
+	      'nKGq7PcnoLBnrJ7vWdnjSkDmp+7ceuRP/gnEIYo7qOLYxf2zRRzUtINNHO2' +
+	      '0b2MViegAWWSJvP+RRF7J+0ejONsHkLl87cHyAV5mtcBAkWDrwfwBs8ycno' +
+	      'FVgtIDx0DuQZBgYiBJUHsw3gOxB4sEwz3QX64KWP4JVAW0+yAY+H0Af6hr0' +
+	      'H4JsCfxyUMNz8f9o8YPJzzOCviSMiBQ0pKXYP6W4UBO3NNr7dMrzLsghfdg' +
+	      'RLeBvCayuFgyvnHgHSVvtYDuQXlBHvttEqTuruW3s+vAxqtMXgzwQiGwe7v' +
+	      '1IMkqY6YFnVdApWVbodVgIrUWLXFe7woqkBWkewQyquHyVXE3PgLxqrLEte' +
+	      'jyANTrQjig0nl+ADZUt2/XBb17APJ1NwH7DwhgKzM01Pwst0FFnVdFvVr51' +
+	      'sT522BFHeSqN8Jn8ppQMwq7VNjXDg11wstNUL9327Mew4vG3SPg0AzAoakB' +
+	      'HCeMIFQyJhGBG0MOPBYJekRETMqd0YvTI3IxxZkQgAOhEUSEx+TW0Ilar/q' +
+	      'ITM6vZt04iwkHDs3IJt34xbhtRGAAEcEjvdN6RaCgsaEcQXoEnG78YjQ5AX' +
+	      '+n9YjGnx1YwFxUTC56h/1U1qPZq9f9kaIOTGXz/cHvAPwNSpNAHVYEChpHb' +
+	      'wrwur+PQw1Mur+Pw/RkSP52qI7Vg+7vbaSowOv+3mBVgdNtvB2qNl4O9f8C' +
+	      'DMDGH4cVgIDAXADwGwBuBWDKAIwJgCEOJpPJZDKZTCaTyWQymUwmk8lkMpl' +
+	      'M/69+AFlip7zBTAeRAAAAAElFTkSuQmCC');
+	  sProp['map'] = tx;
+	  mat = new MARenderMarkerMaterial(sProp);
+	} else {
+	  sProp['text'] = itm.text;
+	  var canvas = document.createElement('canvas');
+	  var context = canvas.getContext('2d');
+	  context.font = this.labelFont.weight + ' ' +
+	                 this.labelFont.size + 'px ' + this.labelFont.family;
+	  context.lineWidth = 1;
+	  context.strokeStyle = 'rgba(255,255,255,255)';
+	  context.fillStyle = 'rgba(255,255,255,255)';
+	  context.fillText(sProp['text'], 1, this.labelFont.size + 1);
+	  var tx = new THREE.Texture(canvas);
+	  tx.needsUpdate = true;
+	  sProp['map'] = tx;
+	  mat = new MARenderLabelMaterial(sProp);
+	  mat.text = sProp['text']; // HACK
+	}
 	break;
     }
     return(mat);
@@ -1392,7 +1545,7 @@ MARenderer = function(win, con) {
       {
         max = box.max.z;
       }
-      this.center.copy(box.getCenter());
+      this.center.copy(box.center());
       this.nearPlane = (min < 0.2)? 0.1: min * 0.5;
       this.farPlane =  (max < 1.0)? 10.0: max * 10.0;
       this.cameraPos.set(0, 0, this.center.z + (4.0 * dMax));
