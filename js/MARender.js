@@ -46,8 +46,14 @@ MARenderMode = {
   POINT:		5,
   SECTION:		6,
   MARKER:		7,
-  LABEL:		8
+  LABEL:		8,
+  PATH:			9,
+  SHAPE:	       10
 }
+
+MARenderShape = {
+  DISC:			0
+};
 
 /**
 * Properties which may be set when adding or updating a model.
@@ -58,16 +64,22 @@ MARenderItem = function() {
   this.color            = 0xffffff;
   this.side		= THREE.FrontSide; /* Double sided can cause artifacts
                                               so only use if needed. */
+  this.extrude      	= 1.0;
   this.transparent      = false;
   this.opacity          = 1.0;
   this.mode             = MARenderMode.PHONG;
   this.vertices		= undefined;
-  this.position		= new THREE.Vector3(0, 0, 0); /* Used for text and
-  							 markers. */
+  this.tangents         = undefined;
+  this.normal		= new THREE.Vector3(0, 0, 1);
+  this.position		= new THREE.Vector3(0, 0, 0);
+  this.linewidth	= 1.0;
   this.text		= undefined;
   this.texture		= undefined;
   this.visible          = true;
   this.clipplane        = undefined;
+  this.size             = 1.0;
+  this.segments		= 31;
+  this.style		= MARenderShape.DISC;
 }
 
 /**
@@ -504,10 +516,42 @@ MARenderer = function(win, con) {
           self.scene.add(mrk);
 	  self.makeLive();
 	  break;
+	case MARenderMode.PATH:
+	  geom = self.makePathGeometry(itm.vertices, itm.tangents);
+	  var mat = self._makeMaterial(geom, itm);
+	  var path = new THREE.Line(geom, mat);
+	  path.name = itm.name;
+	  self.scene.add(path);
+	  self.makeLive();
+	  break;
+	case MARenderMode.SHAPE:
+	  geom = self.makeShapeGeometry(itm.style, itm.size, itm.segments,
+	                                itm.extrude);
+	  var mat = self._makeMaterial(geom, itm);
+	  var shape = new THREE.Mesh(geom, mat);
+	  shape.name = itm.name;
+	  shape.position.set(itm.position.x, itm.position.y, itm.position.z);
+	  var d = new THREE.Vector3(itm.normal.x, itm.normal.y, itm.normal.z);
+	  d.add(shape.position);
+	  shape.lookAt(d);
+	  self.scene.add(shape);
+	  self.makeLive();
+	  break;
 	default:
 	  break;
       }
     }
+  }
+
+  /*!
+   * \class     MARenderer
+   * \function	getObjectByName
+   * \return	The found object or undefined if not found.
+   * \brief	Gets the named object if it exists in the scene.
+   * \param name 	Name of the object to find.
+   */
+  this.getObjectByName = function(name) {
+    return(this.scene.getObjectByName(name, true));
   }
 
   /*!
@@ -529,12 +573,64 @@ MARenderer = function(win, con) {
     this.render();
   }
 
-  this.makeMarkerGeometry = function(vertices) {
-    var geom = new THREE.Geometry();
-    if(vertices) {
-      
+  /*!
+   * \class     MARenderer
+   * \function  makePathGeometry
+   * \return	New geometry.
+   * \brief	Creates a geometry for use in rendering paths.
+   * \param vtx		Array of ordered 3D vertices along the path.
+   * \param tgt	Array 	of ordered tangents corresponding to the
+   * 			given vertices along the path.
+   */
+  this.makePathGeometry = function(vtx, tgt) {
+    var colors = [];
+    var positions = [];
+    var tangents = [];
+    var geom = new THREE.BufferGeometry();
+    for(var i = 0; i < vtx.length; ++i) {
+      var v = vtx[i];
+      var t = tgt[i];
+      positions.push(v[0], v[1], v[2]);
+      tangents.push(v[0], v[1], v[2]);
+      colors.push(1.0, 1.0, 1.0);
     }
-    
+    geom.addAttribute('position',
+                      new THREE.BufferAttribute(
+		      new Float32Array(positions), 3));
+    geom.addAttribute('tangent',
+                      new THREE.BufferAttribute(
+		      new Float32Array(tangents), 3));
+    geom.addAttribute('color',
+                      new THREE.BufferAttribute(
+		      new Float32Array(colors), 3));
+    geom.computeBoundingBox();
+    geom.computeBoundingSphere();
+    return(geom);
+  }
+  /*!
+   * \class     MARenderer
+   * \function	makeShapeGeometry
+   * \return	New geometry.
+   * \brief	Creates a new shape geometry.
+   * \param	style	 The type of shape to be created.
+   * \param	size	 Shape size (eg radius or width).
+   * \param	segments Number of curve segments.
+   * \param     extrude  Amount to extrude shape.
+   */
+  this.makeShapeGeometry = function(style, size, segments, extrude) {
+    var geom = undefined;
+    switch(style) {
+      case MARenderShape.DISC:
+	var shape = new THREE.Shape();
+	shape.moveTo(0, 0);
+	shape.absarc(0, 0, size, 0.0, Math.PI * 2.1, false );
+	geom = new THREE.ExtrudeGeometry(shape,
+	    {bevelEnabled: false, amount: extrude, curveSegments: segments});
+        break;
+      default:
+        break;
+    }
+    return(geom);
   }
 
   /*!
@@ -875,7 +971,7 @@ MARenderer = function(win, con) {
     for(var i = 0, l = this.scene.children.length; i < l; i ++ ) {
       var child = this.scene.children[i];
       if(child && (child.type === 'Sprite')) {
-	if(child.material.text) {
+	if(child.material.text !== undefined) {
 	  child.scale.set(this.markerSize, this.markerSize, 1.0);
 	} else {
 	  child.scale.set(this.markerSize * this.markerAspect[0],
@@ -945,9 +1041,12 @@ MARenderer = function(win, con) {
     var aid = self.win.requestAnimationFrame(self.animate);
     if(self.useCameraControl && self.cameraControls) {
       self.cameraControls.update();
+      if(self.animCount == 0) {
+        self.handleWindowResize();
+      }
     }
     self.render();
-    if(++(self.animCount) > 400) {
+    if(++(self.animCount) > 200) {
       self.win.cancelAnimationFrame(aid);
     }
   }
@@ -960,9 +1059,9 @@ MARenderer = function(win, con) {
    */
   this.makeLive = function() {
     var count = this.animCount;
-    this.animCount = 0;
+    self.animCount = 0;
     if(count > 200) {
-      this.animate();
+      self.animate();
     }
   }
 
@@ -1114,20 +1213,43 @@ MARenderer = function(win, con) {
       } else if(obj.material) {
         itm.visible = obj.material.visible;
       }
+      if(gProp['size'] !== undefined) {
+	itm.size = gProp['size'];
+      }
+      if(gProp['extrude'] !== undefined) {
+	itm.extrude = gProp['extrude'];
+      }
+      if(gProp['linewidth'] !== undefined) {
+	itm.linewidth = gProp['linewidth'];
+      } else if(obj.type === 'Line') {
+        itm.linewidth = obj.material.linewidth;
+      }
+      if(gProp['segments'] !== undefined) {
+	itm.segments = gProp['segments'];
+      }
       if(gProp['texture']) {
 	itm.texture = gProp['texture'].slice(0);
       }
       if(gProp['vertices']) {
 	itm.vertices = gProp['vertices'].slice(0);
       }
+      if(gProp['tangents']) {
+	itm.tangents = gProp['tangents'].slice(0);
+      }
       if(gProp['position']) {
 	itm.position = gProp['position'];
-      } else if(obj.type === 'Sprite') {
+      } else if((obj.type === 'Sprite') ||
+		((obj.geometry !== undefined) &&
+		 (obj.geometry.type == 'ExtrudeGeometry'))) {
         itm.position = obj.position;
+      }
+      if(gProp['normal']) {
+        itm.normal = gProp['normal'];
       }
       if(gProp['text']) {
 	itm.text = gProp['text'];
-      } else if((obj.type === 'Sprite') && obj.material && obj.material.text) {
+      } else if((obj.type === 'Sprite') && (obj.material !== undefined) &&
+                (obj.material.text !== undefined)) {
         itm.text = obj.material.text;
       }
       if(gProp['mode']) {
@@ -1137,11 +1259,16 @@ MARenderer = function(win, con) {
 	  itm.mode = mode;
 	}
       } else {
-        if(obj.type === 'Points') {
+	if(obj.type === 'Line') {
+	  itm.mode = MARenderMode.PATH;
+	} else if((obj.geometry !== undefined) &&
+	   (obj.geometry.type === 'ExtrudeGeometry')) {
+	  itm.mode = MARenderMode.SHAPE;
+	} else if(obj.type === 'Points') {
 	  itm.mode = MARenderMode.POINT;
 	} else if(obj.material) {
 	  if(obj.material.type === 'SpriteMaterial') {
-	    if(obj.material.text) {
+	    if(obj.material.text !== undefined) {
 	      itm.mode = MARenderMode.LABEL;
 	    } else {
 	      itm.mode = MARenderMode.MARKER;
@@ -1194,8 +1321,8 @@ MARenderer = function(win, con) {
 	  }
 	}
 	break;
-      case MARenderMode.MARKER:
       case MARenderMode.LABEL:
+      case MARenderMode.MARKER:
         var mat = this._makeMaterial(obj.geometry, itm);
 	var oldmat = obj.material;
 	obj.material = mat;
@@ -1206,6 +1333,42 @@ MARenderer = function(win, con) {
 	  obj.position.set(itm.position.x, itm.position.y, itm.position.z);
 	}
 	break;
+      case MARenderMode.SHAPE:
+	pos = obj.position;
+	if(itm.style || itm.size || itm.segments || itm.extrude) {
+	  var oldgeom = obj.geometry;
+          var geom = self.makeShapeGeometry(itm.style, itm.size, itm.segments,
+	                                    itm.extrude);
+	  oldgeom.dispose();
+	  obj.geometry = geom;
+	}
+	var oldmat = obj.material;
+	var mat = this._makeMaterial(obj.geometry, itm);
+	oldmat.dispose();
+	obj.material = mat;
+	if(itm.position) {
+	  obj.position.set(itm.position.x, itm.position.y, itm.position.z);
+	  if(itm.normal) {
+	    var d = new THREE.Vector3(itm.normal.x, itm.normal.y, itm.normal.z);
+	    d.add(obj.position);
+	    obj.lookAt(d);
+	  }
+	}
+        break;
+      case MARenderMode.PATH:
+	if(itm.vertices || itm.tangents) {
+	  var oldgeom = obj.geometry;
+	  var geom = self.makePathGeometry(itm.vertices, itm.tangents);
+	  oldgeom.dispose();
+	  obj.geometry = geom;
+	}
+	var oldmat = obj.material;
+	var mat = this._makeMaterial(obj.geometry, itm);
+	oldmat.dispose();
+	obj.material = mat;
+        break;
+      default:
+        break;
     }
   }
 
@@ -1243,15 +1406,23 @@ MARenderer = function(win, con) {
         case 'name':
         case 'path':
 	case 'side':
-          itm[p] = gProp[p];
+	case 'text':
+	case 'position':
+	  itm[p] = gProp[p];
           break;
-        case 'color':
-        case 'opacity':
-	case 'pitch':
 	case 'yaw':
 	case 'dist':
+	case 'size':
+        case 'color':
+	case 'pitch':
+	case 'style':
+        case 'extrude':
+        case 'opacity':
+        case 'segments':
+        case 'linewidth':
 	  itm[p] = Number(gProp[p]);
           break;
+	case 'visible':
         case 'transparent':
           itm[p] = Boolean(gProp[p]);
           break;
@@ -1261,14 +1432,10 @@ MARenderer = function(win, con) {
 	    itm[p] = mode;
 	  }
 	  break;
+	case 'texture':
+	case 'tangents':
 	case 'vertices':
 	  itm[p] = gProp[p].slice(0);
-	  break;
-	case 'texture':
-	  itm[p] = gProp[p].slice(0);
-	  break;
-	case 'visible':
-	  itm[p] = Boolean(gProp[p]);
 	  break;
 	case 'clipping':
 	  if(gProp[p] && (gProp[p] instanceof THREE.Plane)) {
@@ -1277,12 +1444,6 @@ MARenderer = function(win, con) {
 	  } else {
 	    itm.clipping = this.noClipPlanes;
 	  }
-	  break;
-	case 'position':
-	  itm[p] = gProp[p];
-	  break;
-	case 'text':
-	  itm[p] = gProp[p];
 	  break;
         default:
 	  ok = false;
@@ -1316,6 +1477,8 @@ MARenderer = function(win, con) {
 	case MARenderMode.SECTION:
 	case MARenderMode.MARKER:
 	case MARenderMode.LABEL:
+	case MARenderMode.PATH:
+	case MARenderMode.SHAPE:
 	  rMode = gMode;
 	  break;
 	default:
@@ -1366,6 +1529,7 @@ MARenderer = function(win, con) {
 	mat = new THREE.MeshLambertMaterial(sProp);
 	break;
       case MARenderMode.PHONG:
+      case MARenderMode.SHAPE:
 	sProp['color'] = itm.color;
 	sProp['opacity'] = itm.opacity;
 	sProp['visible'] = itm.visible;
@@ -1419,6 +1583,17 @@ MARenderer = function(win, con) {
 	} else {
 	  mat = new THREE.PointsMaterial(sProp);
 	}
+	break;
+      case MARenderMode.PATH:
+	sProp['color'] = itm.color;
+	sProp['opacity'] = itm.opacity;
+	sProp['transparent'] = itm.transparent;
+	sProp['alphaTest'] = 0.2;
+	sProp['visible'] = itm.visible;
+	sProp['linewidth'] = itm.linewidth;
+	sProp['clippingPlanes'] = itm.clipping;
+	sProp['vertexColors'] = true;
+	mat = new THREE.LineBasicMaterial(sProp);
 	break;
       case MARenderMode.SECTION:
 	sProp['color'] = itm.color;
@@ -1480,8 +1655,10 @@ MARenderer = function(win, con) {
 	  tx.needsUpdate = true;
 	  sProp['map'] = tx;
 	  mat = new MARenderLabelMaterial(sProp);
-	  mat.text = sProp['text']; // HACK
+	  mat.text = sProp['text'];
 	}
+	break;
+      default:
 	break;
     }
     return(mat);
@@ -1601,13 +1778,12 @@ MARenderer = function(win, con) {
    * \brief	Performs picking and then dispatches a pick event.
    */
   this._pick = function() {
-    var pos = this.mousePos;
+    var pos = self.mousePos;
     pos.y = pos.y + self.pickOfs;
     self.raycaster.setFromCamera(pos, self.camera);
     var isct = self.raycaster.intersectObjects(self.scene.children, false);
     if(isct.length > 0) {
-      self.eventHandler.dispatchEvent({type: 'pick',
-                                       hitlist: isct});
+      self.eventHandler.dispatchEvent({type: 'pick', hitlist: isct});
     }
   }
 
@@ -1675,9 +1851,19 @@ MARenderer = function(win, con) {
   /*!
    * \class	MARenderer
    * \function	_windowResize
-   * \brief	Handles window resize events.
+   * \brief	Responds to window resize events.
    */
   this._windowResize = function() {
+    self.handleWindowResize();
+    self.makeLive();
+  }
+
+  /*!
+   * \class	MARenderer
+   * \function	handleWindowResize
+   * \brief	Handles window resize.
+   */
+  this.handleWindowResize = function() {
     self.setConOffset();
     self.camera.aspect = self.con.clientWidth / self.con.clientHeight;
     self.camera.updateProjectionMatrix();
@@ -1685,7 +1871,6 @@ MARenderer = function(win, con) {
     if(self.cameraControls) {
       self.cameraControls.handleResize();
     }
-    self.makeLive();
   }
 
 }
