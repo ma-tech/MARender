@@ -276,7 +276,7 @@ AlphaPointsMaterial = function(params) {
 MARenderer = function(win, con) {
   var self = this;
   this.type = 'MARenderer';
-  Object.defineProperty(self, 'version', {value: '1.3.2', writable: false});
+  Object.defineProperty(self, 'version', {value: '1.3.3', writable: false});
   this.win = win;
   this.con = con;
   this.scene;
@@ -323,7 +323,7 @@ MARenderer = function(win, con) {
     this.camera.updateProjectionMatrix();
     this.cameraControls = this._makeCameraControls();
 
-    this.renderer = new THREE.WebGLRenderer({antialias: true});
+    this.renderer = new THREE.WebGLRenderer({alpha: true, antialias: true});
     this.renderer.setSize(this.con.clientWidth, this.con.clientHeight);
     this.con.appendChild(this.renderer.domElement);
 
