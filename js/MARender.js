@@ -1366,6 +1366,9 @@ MARenderer = function(win, con) {
 	var mat = this._makeMaterial(obj.geometry, itm);
 	oldmat.dispose();
 	obj.material = mat;
+        if(itm.visible !== undefined) {
+	  obj['visible'] = itm.visible;
+	}
         break;
       default:
         break;
