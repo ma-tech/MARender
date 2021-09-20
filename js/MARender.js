@@ -966,17 +966,19 @@ MARenderer = function(win, con) {
   this.markerSizeSet = function(sz) {
     var update = false;
     if(sz !== undefined) {
-      this.markerSize = this._markerSizeClamp(sz);
+      self.markerSize = this._markerSizeClamp(sz);
     }
-    for(var i = 0, l = this.scene.children.length; i < l; i ++ ) {
-      var child = this.scene.children[i];
-      if(child && (child.type === 'Sprite')) {
-	if(child.material.text !== undefined) {
-	  child.scale.set(this.markerSize, this.markerSize, 1.0);
-	} else {
-	  child.scale.set(this.markerSize * this.markerAspect[0],
-			  this.markerSize * this.markerAspect[1], 1.0);
-        }
+    if((this.scene  !== undefined) && (this.scene.children !== undefined)) {
+      for(var i = 0, l = this.scene.children.length; i < l; i ++ ) {
+	var child = this.scene.children[i];
+	if(child && (child.type === 'Sprite')) {
+	  if(child.material.text !== undefined) {
+	    child.scale.set(this.markerSize, this.markerSize, 1.0);
+	  } else {
+	    child.scale.set(this.markerSize * this.markerAspect[0],
+			    this.markerSize * this.markerAspect[1], 1.0);
+	  }
+	}
       }
     }
     if(update) {
