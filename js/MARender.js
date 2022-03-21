@@ -70,6 +70,7 @@ MARenderItem = function() {
   this.mode             = MARenderMode.PHONG;
   this.vertices		= undefined;
   this.tangents         = undefined;
+  this.normals          = undefined;
   this.normal		= new THREE.Vector3(0, 0, 1);
   this.position		= new THREE.Vector3(0, 0, 0);
   this.linewidth	= 1.0;
@@ -276,7 +277,7 @@ AlphaPointsMaterial = function(params) {
 MARenderer = function(win, con) {
   var self = this;
   this.type = 'MARenderer';
-  Object.defineProperty(self, 'version', {value: '1.3.4', writable: false});
+  Object.defineProperty(self, 'version', {value: '1.3.5', writable: false});
   this.win = win;
   this.con = con;
   this.scene;
@@ -517,7 +518,8 @@ MARenderer = function(win, con) {
 	  self.makeLive();
 	  break;
 	case MARenderMode.PATH:
-	  geom = self.makePathGeometry(itm.vertices, itm.tangents);
+	  geom = self.makePathGeometry(itm.vertices, itm.tangents,
+	  			       itm.normals);
 	  var mat = self._makeMaterial(geom, itm);
 	  var path = new THREE.Line(geom, mat);
 	  path.name = itm.name;
@@ -579,30 +581,48 @@ MARenderer = function(win, con) {
    * \return	New geometry.
    * \brief	Creates a geometry for use in rendering paths.
    * \param vtx		Array of ordered 3D vertices along the path.
-   * \param tgt	Array 	of ordered tangents corresponding to the
+   * \param tgt		Array of ordered tangents corresponding to the
    * 			given vertices along the path.
+   * 			Optional, the tangents array may be undefined.
+   * \param nrm 	Array of ordered (reference) normals corresponding to
+   * 			the given tangents and vertices along the path.
+   * 			Optional, the normals array may be undefined.
    */
-  this.makePathGeometry = function(vtx, tgt) {
+  this.makePathGeometry = function(vtx, tgt, nrm) {
     var colors = [];
     var positions = [];
+    var normals = [];
     var tangents = [];
     var geom = new THREE.BufferGeometry();
     for(var i = 0; i < vtx.length; ++i) {
       var v = vtx[i];
       var t = tgt[i];
-      positions.push(v[0], v[1], v[2]);
-      tangents.push(v[0], v[1], v[2]);
       colors.push(1.0, 1.0, 1.0);
+      positions.push(v[0], v[1], v[2]);
+      if(tgt !== undefined) {
+        tangents.push(t[0], t[1], t[2]);
+      }
+      if(nrm !== undefined) {
+        n = nrm[i];
+        normals.push(n[0], n[1], n[2]);
+      }
     }
-    geom.addAttribute('position',
-                      new THREE.BufferAttribute(
-		      new Float32Array(positions), 3));
-    geom.addAttribute('tangent',
-                      new THREE.BufferAttribute(
-		      new Float32Array(tangents), 3));
     geom.addAttribute('color',
                       new THREE.BufferAttribute(
 		      new Float32Array(colors), 3));
+    geom.addAttribute('position',
+                      new THREE.BufferAttribute(
+		      new Float32Array(positions), 3));
+    if(tgt !== undefined) {
+      geom.addAttribute('tangent',
+			new THREE.BufferAttribute(
+			new Float32Array(tangents), 3));
+    }
+    if(nrm !== undefined) {
+      geom.addAttribute('normal',
+			new THREE.BufferAttribute(
+			new Float32Array(normals), 3));
+    }
     geom.computeBoundingBox();
     geom.computeBoundingSphere();
     return(geom);
@@ -1238,6 +1258,9 @@ MARenderer = function(win, con) {
       if(gProp['tangents']) {
 	itm.tangents = gProp['tangents'].slice(0);
       }
+      if(gProp['normals']) {
+	itm.normals = gProp['normals'].slice(0);
+      }
       if(gProp['position']) {
 	itm.position = gProp['position'];
       } else if((obj.type === 'Sprite') ||
@@ -1358,9 +1381,10 @@ MARenderer = function(win, con) {
 	}
         break;
       case MARenderMode.PATH:
-	if(itm.vertices || itm.tangents) {
+	if(itm.vertices || itm.tangents || itm.normals) {
 	  var oldgeom = obj.geometry;
-	  var geom = self.makePathGeometry(itm.vertices, itm.tangents);
+	  var geom = self.makePathGeometry(itm.vertices, itm.tangents,
+	  				   itm.normals);
 	  oldgeom.dispose();
 	  obj.geometry = geom;
 	}
@@ -1439,6 +1463,7 @@ MARenderer = function(win, con) {
 	  break;
 	case 'texture':
 	case 'tangents':
+	case 'normals':
 	case 'vertices':
 	  itm[p] = gProp[p].slice(0);
 	  break;
