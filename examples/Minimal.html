@@ -5,8 +5,23 @@
 <meta charset="utf-8">
 </head>
 <style>
-body  {background-color: #000; color: #fff;}
-#info {background-color: #000; color: #fff; text-align: center;}
+body  {
+  background-color: #000;
+  color:            #fff;
+  margin           : 0px;
+  overflow         : hidden};
+#info {
+  background-color: #000;
+  color:            #fff;
+  text-align:       center;
+  top:              0%;
+  left:             0%;}
+#three {
+  position:         absolute;
+  top:              0%;
+  left:             0%;
+  width:            100%;
+  height:           100%;}
 </style>
 
 
@@ -15,12 +30,15 @@ body  {background-color: #000; color: #fff;}
 Minimal MARender Test
 </div>
 
-<script src="js/three.min.js"></script>
+</div>
+<div id="three">
+</div>
+
+<script src="js/three.js"></script>
 <script src="js/TrackballControls.js"></script>
-<script src="js/STLLoader.js"></script>
 <script src="js/MAVTKLoader.js"></script>
 <script src="js/Detector.js"></script>
-<script src="js/MARender.min.js"></script>
+<script src="js/MARender.js"></script>
 
 <script>
 
@@ -28,29 +46,34 @@ if(!(Detector.webgl)) {
   Detector.addGetWebGLMessage();
 }
 
-var container;
-container = document.createElement('div');
+var container = document.getElementById('three');
 document.body.appendChild(container);
 
 var ren = new MARenderer(window, container);
+
 ren.init();
+
 ren.addModel({name:        'emb',
               path:        'models/emb.vtk',
-	      color:       0xf0f0a0,
+	      color:       0xffffff,
 	      transparent: true,
-	      opacity:	   0.5});
-ren.addModel({name:        'neu',
-              path:        'models/neu.vtk',
-	      color:       0xf0a010,
+	      opacity:	   0.3,
+	      mode:        MARenderMode.PHONG});
+ren.addModel({name:        'shh',
+              path:        'models/shh.vtk',
+	      color:       0x11aaff,
+	      transparent: true,
+	      opacity:	   0.5,
 	      mode:        MARenderMode.POINT});
 ren.addModel({name:        'sec',
-              texture:     'models/section.png',
-	      vertices:	   [new THREE.Vector3( 50, 43,150),
-	                    new THREE.Vector3(396, 43,150),
-			    new THREE.Vector3(396,230,150),
-			    new THREE.Vector3( 50,230,150)],
+              texture:     'models/sec.png',
+	      vertices:	   [new THREE.Vector3(  9, 39,272),
+	                    new THREE.Vector3(390, 39,272),
+			    new THREE.Vector3(390,292,272),
+			    new THREE.Vector3(  9,292,272)],
 	      color:       0xffffff,
 	      mode:        MARenderMode.SECTION});
+
 ren.animate();
 
 </script>
