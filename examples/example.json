@@ -1,6 +1,6 @@
 {
-  "info": "Exported from MAVTKSurfViewer",
-    "title": "Export from MAVTKSurfViewer",
+  "info": "Exported from MAVTKSurfViewer for MARenderView",
+    "title": "Export from MAVTKSurfViewer for MARenderView",
     "three_view": {
       "near": 100,
       "far": 1000,
@@ -26,17 +26,17 @@
     "show_gui": false,
     "domains": [{
       "opacity": 0.2,
-      "name": "emb.vtk",
+      "name": "embryonic",
       "idx": 0,
       "color": "0xffffff",
-      "path": "models/emb.vtk",
+      "path": "models/EMA27_TS14_embryonic.vtk",
       "transparent": true},
     {
-      "opacity": 1.0,
-      "name": "som.vtk",
+      "opacity": 0.5,
+      "name": "somites",
       "idx": 1,
       "color": "0x37ff05",
-      "path": "models/som.vtk",
-      "transparent": false}
+      "path": "models/EMA27_TS14_somites.vtk",
+      "transparent": true}
   ]
 }

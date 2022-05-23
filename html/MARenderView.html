@@ -164,14 +164,18 @@ info
 <div id="three">
 </div>
 
-<script src="js/three.min.js"></script>
+<!--
+<script src="js/three.module.js"></script>
 <script src="js/TrackballControls.js"></script>
 <script src="js/STLLoader.js"></script>
-<script src="js/MAVTKLoader.js"></script>
-<script src="js/Detector.js"></script>
-<script src="js/MARender.js"></script>
+<script src="js/MAVTKLoader.min.js"></script>
+<script src="js/MARender.min.js"></script>
+-->
 
-<script>
+<script type="module">
+
+import * as THREE from './js/three.module.js';
+import {MARenderer, MARenderMode, MARenderShape} from './js/MARender.min.js';
 
 var rc;
 var sv;
@@ -179,7 +183,7 @@ var ren;
 var url;
 var config;
 
-RenderControls = function() {
+function RenderControls() {
   var sectionVisible;
   var sectionClip;
   var sectionControls;
@@ -188,7 +192,7 @@ RenderControls = function() {
   var sectionDomainVisible;
 }
 
-setRenderControls = function(o) {
+function setRenderControls(o) {
   o.sectionVisible = true;
   o.sectionClip = true;
   o.sectionControls = false;
@@ -197,7 +201,7 @@ setRenderControls = function(o) {
   o.sectionDomainVisible = true;
 }
 
-SectionView = function() {
+function SectionView() {
   var dst;
   var pit;
   var yaw;
@@ -205,7 +209,7 @@ SectionView = function() {
   var flip;
 }
 
-setSectionView = function(o) {
+function setSectionView(o) {
   o.dst = config.section_view.dst;
   o.pit = config.section_view.pit;
   o.yaw = config.section_view.yaw;
@@ -222,7 +226,7 @@ setSectionView = function(o) {
   o.flip = false;
 }
 
-setURL = function() {
+function setURL() {
   url = config.iip3dsrv + '?' +
         'wlz=' + config.section.wlz + '&' +
 	'mod=zeta&' +
@@ -233,7 +237,7 @@ setURL = function() {
   return(url);
 }
 
-rgbColor = function(n, a) {
+function rgbColor(n, a) {
   var r = (n >> 16) & 255;
   var g = (n >> 8) & 255;
   var b = n & 255;
@@ -241,7 +245,7 @@ rgbColor = function(n, a) {
   return(s);
 }
 
-setPlaneTexture = function() {
+function setPlaneTexture() {
   var t = url + '&qlt=50&sel=0,255&';
   if(rc.sectionDomainVisible) {
     for(var i = 1; i < config.domains.length; ++i) {
@@ -253,7 +257,7 @@ setPlaneTexture = function() {
   return(t);
 }
 
-updatePlane = function() {
+function updatePlane() {
   if(config.section && config.section.wlz && (config.section.wlz !== 'null')) {
     url = setURL();
     vtx = ren.getIIP3DBBVertices(url, sv.vxs);
@@ -272,7 +276,7 @@ updatePlane = function() {
   }
 }
 
-toggleGUIVisible = function() {
+function toggleGUIVisible() {
   var elm = document.getElementById('controls');
   if(elm.style.display === 'none') {
     elm.style.display = 'block';
@@ -281,12 +285,12 @@ toggleGUIVisible = function() {
   }
 }
 
-setGUIVisible = function(v) {
+function setGUIVisible(v) {
   var elm = document.getElementById('controls');
   elm.style.display = Boolean(v)? 'block': 'none';
 }
 
-getNameOfOuter = function() {
+function getNameOfOuter() {
   var nam = undefined;
   for(var i = 0; i < config.domains.length; ++i) {
     if(config.domains[i].idx === config.outer_idx) {
@@ -296,7 +300,7 @@ getNameOfOuter = function() {
   return(nam);
 }
 
-setOuterSurfVisible = function(v) {
+function setOuterSurfVisible(v) {
   rc.outerSurfVisible = v;
   var elm = document.getElementById('outerSurfaceVisible');
   var outerName = getNameOfOuter();
@@ -305,7 +309,7 @@ setOuterSurfVisible = function(v) {
   elm.checked = rc.outerSurfVisible;
 }
 
-setSectionVisible = function(v) {
+function setSectionVisible(v) {
   if(config.section && config.section.wlz && (config.section.wlz !== 'null')) {
     rc.sectionVisible = v;
     var elm = document.getElementById('sectionVisible');
@@ -316,14 +320,14 @@ setSectionVisible = function(v) {
   }
 }
 
-setSectionClip = function(c) {
+function setSectionClip(c) {
   rc.sectionClip = c;
   var elm = document.getElementById('sectionClipping');
   ren.setLocalClipping(rc.sectionClip);
   elm.checked = rc.sectionClip;
 }
 
-setDomainSurfVisible = function(v) {
+function setDomainSurfVisible(v) {
   rc.domainSurfVisible = v;
   var elm = document.getElementById('domainSurfaces');
   for(var i = 0; i < config.domains.length; ++i) {
@@ -335,7 +339,7 @@ setDomainSurfVisible = function(v) {
   elm.checked = rc.domainSurfVisible;
 }
 
-setSectionDomainVisible = function(v) {
+function setSectionDomainVisible(v) {
   rc.sectionDomainVisible = v;
   var elm = document.getElementById('sectionDomains');
   elm.checked = rc.sectionDomainVisible;
@@ -344,7 +348,7 @@ setSectionDomainVisible = function(v) {
   }
 }
 
-updateDst = function(v, pln) {
+function updateDst(v, pln) {
   sv.dst = v;
   document.getElementById('dstValue').value = sv.dst;
   document.getElementById('dstSlider').value = sv.dst;
@@ -353,7 +357,7 @@ updateDst = function(v, pln) {
   }
 }
 
-setDstRange = function(dst) {
+function setDstRange(dst) {
   var req = new XMLHttpRequest();
   req.open('GET', url + '&OBJ=Wlz-distance-range', false);
   req.send(null);
@@ -373,7 +377,7 @@ setDstRange = function(dst) {
   }
 }
 
-updatePit = function(v, pln) {
+function updatePit(v, pln) {
   if(v < 0.0) {
     v = 0;
   } else if(v > 179.9) {
@@ -388,7 +392,7 @@ updatePit = function(v, pln) {
   }
 }
 
-updateYaw = function(v, pln) {
+function updateYaw(v, pln) {
   if(v < 0.0) {
     v = 0;
   } else if(v > 359.9) {
@@ -403,20 +407,20 @@ updateYaw = function(v, pln) {
   }
 }
 
-updateDstPitYaw = function(d, p, y) {
+function updateDstPitYaw(d, p, y) {
   updateDst(d, false);
   updatePit(p, false);
   updateYaw(y, true);
 }
 
-setFlipSection = function(v) {
+function setFlipSection(v) {
   sv.flipSection = v;
   var elm = document.getElementById('flipSection');
   elm.checked = sv.flipSection;
   updatePlane();
 }
 
-pickHandler = function(e) {
+function pickHandler(e) {
   var txt = 'Objects (front to back):\n';
   for(var i = 0; i < e.hitlist.length; ++i) {
     var hit = e.hitlist[i].object;
@@ -425,7 +429,7 @@ pickHandler = function(e) {
   window.alert(txt);
 }
 
-keyPressed = function(e) {
+function keyPressed(e) {
   e = e || window.event;
   if("key" in e) {
     if(e.key === "g") {
@@ -434,14 +438,14 @@ keyPressed = function(e) {
   }
 }
 
-shareView = function() {
+function shareView() {
   var href = new String(location.href);
   txt = 'Cut and paste the URL:\n  ' + href.split('&')[0] +
         '&dst=' + sv.dst + '&pit=' + sv.pit + '&yaw=' + sv.yaw + '&';
   window.alert(txt);
 }
 
-setModels = function() {
+function setModels() {
   var  usePln = (config.section && config.section.wlz &&
                  (config.section.wlz !== 'null'));
   if(usePln) {
@@ -477,7 +481,7 @@ setModels = function() {
   }
 }
 
-setPage = function() {
+function setPage() {
   document.title = config.title;
   var elm = document.getElementById('info');
   elm.innerHTML = config.info;
@@ -514,7 +518,7 @@ function parseURL() {
   return(prm);
 }
 
-main = function() {
+function main() {
   var vtx;
   var tex;
   var pln;
@@ -529,9 +533,6 @@ main = function() {
   rc = new RenderControls();
   setRenderControls(rc);
   container = document.getElementById('three');
-  if(!(Detector.webgl)) {
-    Detector.addGetWebGLMessage();
-  }
   ren = new MARenderer(window, container);
   ren.init();
   ren.setLocalClipping(true);
@@ -549,9 +550,11 @@ main = function() {
     ren.setHome(pos, up);
   }
   setModels();
-  setDstRange(config.section_view.dst);
-  updatePit(config.section_view.pit);
-  updateYaw(config.section_view.yaw, true);
+  if(config.iip3dsrv.toLowerCase() !== 'none') {
+    setDstRange(config.section_view.dst);
+    updatePit(config.section_view.pit);
+    updateYaw(config.section_view.yaw, true);
+  }
   setOuterSurfVisible(true);
   setDomainSurfVisible(true);
   setSectionVisible(true);

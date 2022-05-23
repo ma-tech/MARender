@@ -1,118 +1,199 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<title>MARender Example</title>
+<title>Minimal MARender Test</title>
 <meta charset="utf-8">
-<style>
-body {
-  font-family      : Monospace;
-  background-color : #000;
-  color            : #fff;
-  margin           : 0px;
-  overflow         : hidden;
-}
-#three {
-  position         : absolute;
-   top             : 0px;
-   left            : 0px;
-   width           : 100%;
-   height          : 100%;
-}
-</style>
 </head>
+<style>
+table {
+  border: 1px solid #fff;
+  width: 20%;
+}
+header {
+  border: 1px solid #fff;
+  width: 20%;
+}
+body  {
+  background-color: #000;
+  color:            #fff;
+  margin           : 0px;
+  overflow         : hidden};
+#info {
+  background-color: #000;
+  color:            #fff;
+  text-align:       center;
+  top:              0%;
+  left:             0%;}
+#three {
+  position:         absolute;
+  top:              0%;
+  left:             0%;
+  width:            100%;
+  height:           100%;}
+</style>
+
 
 <body>
 <div id="info">
-MARender Example.
+MARender Example
+<p></p>
+<header>
+A simple example using MARender to visualise surfaces, point clouds,
+sections, paths, markers and labels.
+</header>
+<p>
+<table>
+  <tr colspan="2"><u>Keypress Events</u></tr>
+  <tr><td>Test code</td><td>!</td></tr>
+  <tr><td>Reduce opacity</td><td><</td></tr>
+  <tr><td>Increase opacity</td><td>></td></tr>
+  <tr><td>Application (move marker/label)</td><td>?</td></tr>
+  <tr><td>Set camera</td><td>C</td></tr>
+  <tr><td>Set home</td><td>H</td></tr>
+  <tr><td>Go home</td><td>h</td></tr>
+  <tr><td>Increase point size</td><td>p</td></tr>
+  <tr><td>Reduce point size</td><td>q</td></tr>
+  <tr><td>Render surfaces (Phong shading)</td><td>s</td></tr>
+  <tr><td>Render surfaces (wireframe)</td><td>w</td></tr>
+</table>
+</p><p>
+<table>
+  <tr colspan="2"><u>Mouse Camera Controls</u></tr>
+  <tr><td>rotate</td><td>left button or 'a' + left button</td></tr>
+  <tr><td>zoom</td><td>scroll wheel or 's' + left button</td></tr>
+  <tr><td>pan</td><td>right button or 'd' + left button</td></tr>
+</table>
+</p>
 </div>
 
 </div>
 <div id="three">
 </div>
 
-<script src="js/three.js"></script>
-<script src="js/TrackballControls.js"></script>
-<script src="js/STLLoader.js"></script>
-<script src="js/MAVTKLoader.js"></script>
-<script src="js/Detector.js"></script>
-<script src="js/MARender.js"></script>
+<script type="module">
 
-<script>
-if(!(Detector.webgl)) {
-  Detector.addGetWebGLMessage();
-}
+  import * as THREE from './js/three.module.js';
+  import {MARenderer, MARenderMode, MARenderShape} from './js/MARender.min.js';
 
-var container = document.getElementById('three');
+  // Demonstrate handling pick events by printing the pick location to the
+  // console and moving the marker/label
+  function picker(e) {
+    for(let i = 0, l = e.hitlist.length; i < l; ++i) {
+      let hit = e.hitlist[i];
+      if(hit.object && hit.object.name) {
+        console.log('picker: ' + hit.object.name + ' ' +
+            hit.point.x + ',' + hit.point.y + ',' + hit.point.z);
+        if(hit.object.name === 'emb') {
+	  let p = hit.point.clone();
+	  ren.updateModel({name: 'marker', position: p});
+	  ren.updateModel({name: 'label',
+	       position: new THREE.Vector3(p.x + 10, p.y + 10, p.z + 10)});
+	}
+      }
+    }
+  }
 
-var ren = new MARenderer(window, container);
+  // Load and return a JSON object
+  function loadJsn(url) {
+    let obj = undefined;
+    let req = new XMLHttpRequest();
+    req.overrideMimeType("application/json");
+    req.open('GET', url, false);
+    req.send(null);
+    if(req.status === 200) {
+      obj = JSON.parse(req.responseText);
+    }
+    return(obj);
+  }
 
-ren.init();
-ren.pointSizeSet(10.0);
+  // Create the window for 3D rendering within existing container
+  var container = document.getElementById('three');
+  document.body.appendChild(container);
 
-var cen =  new THREE.Vector3(200, 165, 275);
-var near = 4;
-var far =  4000;
-var pos =  new THREE.Vector3(4.6251, -1189.4906, 136.2749);
-var up =   new THREE.Vector3(0.02426, 0.2305, -0.9728);
-ren.setCamera(cen, near, far, pos);
-ren.setHome(pos, up);
+  // Create renderer and add pick event listener
+  var ren = new MARenderer(window, container);
+  ren.addEventListener('pick', picker, false);
 
-var vtx;
-var tex;
-var use_iip3d = false;
-if(use_iip3d) {
-  var iipsrv = 'http://bill-lt//fcgi-bin/wlziipsrv.fcgi';
-  var wlz = '/opt/MAWWW/public/MARenderTests/models/EMA53_CmpndObj.wlz'
-  var url = iipsrv + '?wlz=' + wlz + 
-	    '&mod=zeta&fxp=199,165,273&&dst=-20&pit=90&yaw=90&rol=0';
-  vtx = ren.getIIP3DBBVertices(url, new THREE.Vector3(1, 1, 1));
-  tex = url + '&map=linear,0,255,255,0&cvt=png';
-} else {
-  vtx = [new THREE.Vector3(390, 145, 530),
-	     new THREE.Vector3(390, 145, 15),
-	     new THREE.Vector3(8,   145, 15),
-	     new THREE.Vector3(8,   145, 530)];
+  // Set up a point location and plane used for the marker, label and disk
+  let p = new THREE.Vector3(346, 256, 354);
+  let pv = [
+            new THREE.Vector3(390,145,530),
+            new THREE.Vector3(390,145, 15),
+            new THREE.Vector3(  8,145, 15),
+            new THREE.Vector3(  8,145,530)
+            ];
+  let pln = ren.makePlaneFromVertices(pv);
 
-  tex = 'models/EMA53_TS17_sect.png';
-}
 
-var pln = ren.makePlaneFromVertices(vtx);
+  // Initialise the renderer
+  ren.init();
 
-ren.setLocalClipping(true);
- 
-ren.addModel({name:        'surf',
-	      path:        'models/EMA53_TS17_domain.vtk',
-	      color:       0xffffff,
-	      transparent: true,
-	      clipping:    pln,
-	      opacity:     0.2});
+  // Don't compute a default view as models are loaded
+  ren.setHomeOnLoad = false;
 
-ren.addModel({name: 'plane',
-	      mode: MARenderMode.SECTION,
-	      vertices: vtx,
-	      color: 0xffffff,
-              transparent: true,
-              opacity:   0.75,
-	      texture: tex});
+  // Set a specific view and home position rather than the default
+  let cen = new THREE.Vector3(200, 160, 270);
+  let near = 10;
+  let far = 10000;
+  let pos = new THREE.Vector3(1500, 600, 300)
+  let up = new THREE.Vector3(0, 0, -1);
+  ren.setCamera(cen, near, far, pos);
+  ren.setHome(pos, up);
 
-ren.addModel({name:        'shh',
-	      path:        'models/EMA53_TS17_Shh.vtk',
-	      color:       0x0040f0,
-	      mode:        MARenderMode.POINT,
-	      transparent: true});
+  // Set point size used to scale the size of points in  point clouds
+  ren.pointSize = 5;
 
-ren.addModel({name:        'wt1',
-	      path:        'models/EMA53_TS17_Wnt1.vtk',
-	      color:       0x00f000,
-	      mode:        MARenderMode.POINT,
-	      transparent: true});
+  // Allow surface clipping
+  ren.setLocalClipping(true);
 
-ren.addModel({name:        'heart',
-	      path:        'models/EMA53_TS17_heart.vtk',
-	      color:       0xf00000});
+  // Add models to the scene
+  ren.addModel({name:        'emb',
+                path:        'models/EMA53_TS17_embryonic.vtk',
+                color:       0xffffff,
+                transparent: true,
+                opacity:     0.3,
+                clipping:    pln,
+                mode:        MARenderMode.PHONG});
+  ren.addModel({name:        'shh',
+                path:        'models/EMA53_TS17_shh.vtk',
+                color:       0x11aaff,
+                transparent: true,
+                opacity:     0.5,
+                mode:        MARenderMode.POINT});
+  ren.addModel({name:        'sec',
+                texture:     'models/EMA53_TS17_section.png',
+                vertices:    pv,
+                color:       0xffffff,
+                mode:        MARenderMode.SECTION});
+  ren.addModel({name:        'marker',
+                mode:        MARenderMode.MARKER,
+                color:       0xc0a000,
+		position:    new THREE.Vector3(p.x, p.y, p.z)});
+  ren.addModel({name:        'label',
+                mode:        MARenderMode.LABEL,
+                text:       'Label',
+                color:       0xc0a000,
+                position:    new THREE.Vector3(p.x + 10, p.y + 10, p.z + 10)});
+  let path = loadJsn('./models/EMA53_TS17_neural_tube_path.jsn');
+  ren.addModel({name:        'path',
+                mode:        MARenderMode.PATH,
+		color:       0xf04000,
+		linewidth:   10,
+                vertices:    path.points,
+		tangents:    path.tangents,
+		normals:     path.normals});
+  ren.addModel({name:        'disc',
+                mode:        MARenderMode.SHAPE,
+		style:       MARenderShape.DISC,
+		color:       0x70f070,
+		position:    p.clone(),
+		normal:	     new THREE.Vector3(0, 1, 0),
+		size:        15.0});
 
-ren.animate();
+  // Make the scene interactive
+  ren.animate();
+
 </script>
+
 </body>
 </html>
-
