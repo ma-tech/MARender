@@ -1,8 +1,12 @@
+RM		= rm -f
 UGLIFY		= uglifyjs
-SOURCES		= js/MARender.js
-LIBRARY		= js/MARender.min.js
+SOURCES		= js/MARender.js js/MAVTKLoader.js
+MINIFIED	= $(SOURCES:%.js=%.min.js)
 
-all:		$(LIBRARY)
+all:		$(MINIFIED)
 
-$(LIBRARY):	$(SOURCES)
-		$(UGLIFY) -c -- $(SOURCES) >$(LIBRARY)
+clean:
+		$(RM) $(MINIFIED)
+
+%.min.js:	%.js
+		$(UGLIFY) -c -- $< > $@
