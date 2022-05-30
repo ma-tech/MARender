@@ -73,7 +73,7 @@ sections, paths, markers and labels.
 <script type="module">
 
   import * as THREE from './js/three.module.js';
-  import {MARenderer, MARenderMode, MARenderShape} from './js/MARender.min.js';
+  import {MARenderer, MARenderMode, MARenderShape} from './js/MARender.js';
 
   // Demonstrate handling pick events by printing the pick location to the
   // console and moving the marker/label
@@ -83,7 +83,7 @@ sections, paths, markers and labels.
       if(hit.object && hit.object.name) {
         console.log('picker: ' + hit.object.name + ' ' +
             hit.point.x + ',' + hit.point.y + ',' + hit.point.z);
-        if(hit.object.name === 'emb') {
+        if((hit.object.name === 'emb') || (hit.object.name === 'path')) {
 	  let p = hit.point.clone();
 	  ren.updateModel({name: 'marker', position: p});
 	  ren.updateModel({name: 'label',
@@ -178,7 +178,7 @@ sections, paths, markers and labels.
   ren.addModel({name:        'path',
                 mode:        MARenderMode.PATH,
 		color:       0xf04000,
-		linewidth:   10,
+		linewidth:   5,
                 vertices:    path.points,
 		tangents:    path.tangents,
 		normals:     path.normals});
