@@ -38,6 +38,10 @@ import * as THREE from './three.module.js';
 import {TrackballControls} from './TrackballControls.js';
 import {MAVTKLoader} from './MAVTKLoader.js';
 import {STLLoader} from './STLLoader.js';
+import {LineSegments2} from './LineSegments2.js';
+import { LineMaterial } from './LineMaterial.js';
+import { LineGeometry } from './LineGeometry.js';
+
 
 /**
 * Rendering modes
@@ -102,11 +106,21 @@ class MARenderFont {
 }
 
 /**
-* Path material.
+* Paths.
 */
-class MARenderPathMaterial extends THREE.LineBasicMaterial {
-  constructor(args) {
-    super(args);
+
+class MARenderPath extends LineSegments2 {
+  constructor(geom, mat) {
+    super(geom, mat);
+    this.type = 'MARenderPath';
+  }
+}
+MARenderPath.prototype.isMARenderPath = true;
+
+class MARenderPathMaterial extends LineMaterial {
+  constructor(prop) {
+    super(prop);
+    this.type = 'MARenderPathMaterial';
   }
 }
 MARenderPathMaterial.prototype.isPathMaterial = true;
@@ -242,7 +256,7 @@ class AlphaPointsMaterial extends THREE.ShaderMaterial {
 class MARenderer {
   constructor(win, con) {
     this.type = 'MARenderer';
-    Object.defineProperty(this, 'version', {value: '2.0.0', writable: false});
+    Object.defineProperty(this, 'version', {value: '2.0.1', writable: false});
     this.win = win;
     this.con = con;
     this.scene;
@@ -289,7 +303,7 @@ class MARenderer {
     this.cameraControls = this._makeCameraControls();
 
     this.renderer = new THREE.WebGLRenderer({alpha: true, antialias: true});
-    this.renderer.setSize(this.con.clientWidth, this.con.clientHeight);
+    this._setRendererSize(this.con.clientWidth, this.con.clientHeight);
     this.con.appendChild(this.renderer.domElement);
 
     this.scene.add(this.camera);
@@ -484,7 +498,7 @@ class MARenderer {
 	  geom = this.makePathGeometry(itm.vertices, itm.tangents,
 	  			       itm.normals);
 	  mat = this._makeMaterial(geom, itm);
-	  let path = new THREE.Line(geom, mat);
+	  let path = new MARenderPath(geom, mat);
 	  path.name = itm.name;
 	  this.scene.add(path);
 	  this.makeLive();
@@ -558,7 +572,7 @@ class MARenderer {
     let positions = [];
     let normals = [];
     let tangents = [];
-    let geom = new THREE.BufferGeometry();
+    let geom = new LineGeometry();
     for(let i = 0; i < vtx.length; ++i) {
       let v = vtx[i];
       colors.push(1.0, 1.0, 1.0);
@@ -572,10 +586,8 @@ class MARenderer {
         normals.push(n[0], n[1], n[2]);
       }
     }
-    geom.setAttribute('color',
-                      new THREE.Float32BufferAttribute(colors, 3));
-    geom.setAttribute('position',
-                      new THREE.Float32BufferAttribute(positions, 3));
+    geom.setPositions(positions);
+    geom.setColors(colors);
     if(tgt !== undefined) {
       geom.setAttribute('tangent',
 			new THREE.Float32BufferAttribute(tangents, 3));
@@ -688,6 +700,24 @@ class MARenderer {
     }
     this.conOffset.copy(o);
     */
+  }
+
+  /**
+   * @class     MARenderer
+   * @function  setLineResolution
+   * @brief     Sets the resolution for all line materials. This is required
+   * 		for LineMaterial.
+   * @param	w	Window width.
+   * @param	h	Window height.
+   */
+  setLineResolution(w, h) {
+    for(let i = 0, l = this.scene.children.length; i < l; i ++ ) {
+      let child = this.scene.children[i];
+      if(child && (child.type === 'MARenderPath') &&
+         child.material && (child.material.type === 'MARenderPathMaterial')) {
+	child.material.resolution.set(w, h);
+      }
+    }
   }
 
 
@@ -819,7 +849,7 @@ class MARenderer {
     this.setConOffset();
     this.camera.aspect = this.con.clientWidth / this.con.clientHeight;
     this.camera.updateProjectionMatrix();
-    this.renderer.setSize(this.con.clientWidth, this.con.clientHeight);
+    this._setRendererSize(this.con.clientWidth, this.con.clientHeight);
     if(this.cameraControls) {
       this.cameraControls.handleResize();
     }
@@ -1099,6 +1129,18 @@ class MARenderer {
     return(v);
   }
 
+
+  /**
+   * @class     MARenderer
+   * @function  _setRendererSize
+   * @brief	Sets the renderer size.
+   * @param	w	Window width.
+   * @param	h	Window height.
+   */
+  _setRendererSize(w, h) {
+    this.renderer.setSize(w, h);
+    this.setLineResolution(w, h);
+  }
 
   /**
    * @class     MARenderer
@@ -1858,6 +1900,7 @@ class MARenderer {
     this.handleWindowResize();
     this.makeLive();
   }
+
 }
 
 export {
