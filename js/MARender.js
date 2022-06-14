@@ -42,6 +42,7 @@ import {LineSegments2} from './LineSegments2.js';
 import { LineMaterial } from './LineMaterial.js';
 import { LineGeometry } from './LineGeometry.js';
 
+/* globals XMLHttpRequest, console, document  */
 
 /**
 * Rendering modes
@@ -140,7 +141,9 @@ class MARenderMarkerMaterial extends THREE.SpriteMaterial {
 class MARenderLabelMaterial extends MARenderMarkerMaterial  {
   constructor(args) {
     let text = args.text;
-    delete args['text'];
+    if(text) {
+      delete args.text;
+    }
     super(args);
     this.text = text;
   }
@@ -212,7 +215,7 @@ class AlphaPointsMaterial extends THREE.ShaderMaterial {
 	case 'color':
 	case 'alphaTest':
 	  splitParam[1][p] = params[p];
-	  break
+	  break;
 	case 'scale':
 	case 'size':
 	  splitParam[1]['scale'] = params[p];
@@ -256,16 +259,16 @@ class AlphaPointsMaterial extends THREE.ShaderMaterial {
 class MARenderer {
   constructor(win, con) {
     this.type = 'MARenderer';
-    Object.defineProperty(this, 'version', {value: '2.0.1', writable: false});
+    Object.defineProperty(this, 'version', {value: '2.0.2', writable: false});
     this.win = win;
     this.con = con;
-    this.scene;
-    this.ambLight;
-    this.dirLight;
-    this.pntLight;
-    this.camera;
-    this.cameraControls;
-    this.renderer;
+    this.scene = undefined;
+    this.ambLight = undefined;
+    this.dirLight = undefined;
+    this.pntLight = undefined;
+    this.camera = undefined;
+    this.cameraControls = undefined;
+    this.renderer = undefined;
     this.animCount = 0;  // Used to count animation frames since mouse movement
     this.pointSize = 10;
     this.markerSize = 50;
@@ -287,6 +290,8 @@ class MARenderer {
     this.globalClipPlanes = this.noClipPlanes;
     this.markerAspect = [0.3, 1.0];
     this.labelFont = new MARenderFont();
+    this.pickTimestamp = 0;
+    this.pickMaxPointerDelay = 300; // ms max delay between down/up for picking
     THREE.ImageUtils.crossOrigin = ''; // To allow CORS textures
   }
 
@@ -402,6 +407,7 @@ class MARenderer {
    * 			must include a unique name.
    */
   addModel(gProp) {
+    this.makeLive();
     let itm = this._makeRenderItem(gProp);
     if(itm) {
       let mat, geom;
@@ -616,7 +622,7 @@ class MARenderer {
     switch(style) {
       case MARenderShape.DISC:
 	let shape = new THREE.Shape();
-	shape.moveTo(0, 0)
+	shape.moveTo(0, 0);
 	shape.absarc(0, 0, size, 0, Math.PI * 2, false);
 	geom = new THREE.ExtrudeGeometry(shape,
 	    {bevelEnabled: false, depth: extrude, curveSegments: segments});
@@ -972,6 +978,7 @@ class MARenderer {
    * @brief	Renders the scene now.
    */
   render() {
+    this.renderer.clearDepth();
     this.renderer.render(this.scene, this.camera);
   }
 
@@ -1057,7 +1064,7 @@ class MARenderer {
    * @param listener	The event listener function.
    */
   addEventListener(type, listener) {
-    this.eventHandler.addEventListener(type, listener)
+    this.eventHandler.addEventListener(type, listener);
   }
 
   /**
@@ -1068,7 +1075,7 @@ class MARenderer {
    * @param listener	The event listener function.
    */
   removeEventListener(type, listener) {
-    this.eventHandler.removeEventListener(type, listener)
+    this.eventHandler.removeEventListener(type, listener);
   }
 
   /**
@@ -1227,6 +1234,7 @@ class MARenderer {
    * @param gProp	Properties to set in the given object.
    */
   _updateObj(obj, gProp) {
+    this.makeLive();
     let itm = new MARenderItem();
     if(itm) {
       if(gProp['color']) {
@@ -1236,7 +1244,7 @@ class MARenderer {
       }
       if(gProp['clipping'] !== undefined) {
         if(gProp['clipping'] instanceof THREE.Plane) {
-	  pln = new THREE.Plane().copy(gProp['clipping']);
+	  let pln = new THREE.Plane().copy(gProp['clipping']);
 	  itm.clipping = [pln];
         } else {
 	  itm.clipping = this.noClipPlanes;
@@ -1272,7 +1280,7 @@ class MARenderer {
       }
       if(gProp['linewidth'] !== undefined) {
 	itm.linewidth = gProp['linewidth'];
-      } else if(obj.type === 'Line') {
+      } else if(obj.type === 'MARenderPath') {
         itm.linewidth = obj.material.linewidth;
       }
       if(gProp['segments'] !== undefined) {
@@ -1313,7 +1321,7 @@ class MARenderer {
 	  itm.mode = mode;
 	}
       } else {
-	if(obj.type === 'Line') {
+	if(obj.type === 'MARenderPath') {
 	  itm.mode = MARenderMode.PATH;
 	} else if((obj.geometry !== undefined) &&
 	   (obj.geometry.type === 'ExtrudeGeometry')) {
@@ -1395,7 +1403,7 @@ class MARenderer {
 	break;
       case MARenderMode.SHAPE:
 	{
-	  pos = obj.position;
+	  let pos = obj.position;
 	  if(itm.style || itm.size || itm.segments || itm.extrude) {
 	    let oldgeom = obj.geometry;
 	    let geom = this.makeShapeGeometry(itm.style, itm.size,
@@ -1559,7 +1567,7 @@ class MARenderer {
 	  break;
       }
     }
-    return(rMode)
+    return(rMode);
   }
 
   /**
@@ -1763,9 +1771,9 @@ class MARenderer {
       {
         max = box.max.z;
       }
-      this.center.set(box.min.x + box.max.x / 2.,
-                      box.min.y + box.max.y / 2.,
-		      box.min.z + box.max.z / 2.);
+      this.center.set((box.min.x + box.max.x) / 2.0,
+                      (box.min.y + box.max.y) / 2.0,
+		      (box.min.z + box.max.z) / 2.0);
       this.nearPlane = (min < 0.2)? 0.1: min * 0.5;
       this.farPlane =  (max < 1.0)? 10.0: max * 10.0;
       this.cameraPos.set(0, 0, this.center.z + (4.0 * dMax));
@@ -1819,14 +1827,29 @@ class MARenderer {
    * @class	MARenderer
    * @function	_pick
    * @brief	Performs picking and then dispatches a pick event.
+   * @param 	e		The event.
    */
-  _pick() {
-    let pos = this.mousePos;
-    pos.y = pos.y + this.pickOfs;
-    this.raycaster.setFromCamera(pos, this.camera);
-    let isct = this.raycaster.intersectObjects(this.scene.children, false);
-    if(isct.length > 0) {
-      this.eventHandler.dispatchEvent({type: 'pick', hitlist: isct});
+  _pick(e) {
+    let doPick = true;
+    if((e.type === 'pointerdown') || (e.type === 'pointerup')) {
+      doPick = false;
+      if((e.type === 'pointerdown') && (e.buttons === 1)) {
+	this.pickTimestamp = e.timeStamp;
+      } else if((e.type === 'pointerup') && (e.buttons === 0)) {
+	let del = Math.abs(this.pickTimestamp - e.timeStamp);
+	if(del <= this.pickMaxPointerDelay) {
+	  doPick = true;
+	}
+      }
+    }
+    if(doPick) {
+      let pos = this.mousePos;
+      pos.y = pos.y + this.pickOfs;
+      this.raycaster.setFromCamera(pos, this.camera);
+      let isct = this.raycaster.intersectObjects(this.scene.children, false);
+      if(isct.length > 0) {
+	this.eventHandler.dispatchEvent({type: 'pick', hitlist: isct});
+      }
     }
   }
 
@@ -1862,7 +1885,7 @@ class MARenderer {
 	this.opacityIncrement(0.1);
 	break;
       case 63: // ?
-	this._pick();
+	this._pick(e);
         break;
       case 67: // C
         this.setCamera();
