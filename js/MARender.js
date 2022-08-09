@@ -41,6 +41,10 @@ import {STLLoader} from './STLLoader.js';
 import {LineSegments2} from './LineSegments2.js';
 import { LineMaterial } from './LineMaterial.js';
 import { LineGeometry } from './LineGeometry.js';
+import {EffectComposer} from './EffectComposer.js';
+import {RenderPass} from './RenderPass.js';
+import {ShaderPass} from './ShaderPass.js';
+import {UnrealBloomPass} from './UnrealBloomPass.js';
 
 /* globals XMLHttpRequest, console, document  */
 
@@ -92,6 +96,7 @@ class MARenderItem {
     this.size           = 1.0;
     this.segments	= 31;
     this.style		= MARenderShape.DISC;
+    this.bloom		= false;
   }
 }
 
@@ -114,6 +119,7 @@ class MARenderPath extends LineSegments2 {
   constructor(geom, mat) {
     super(geom, mat);
     this.type = 'MARenderPath';
+    this.isMARenderPath = true;
   }
 }
 MARenderPath.prototype.isMARenderPath = true;
@@ -148,6 +154,53 @@ class MARenderLabelMaterial extends MARenderMarkerMaterial  {
     this.text = text;
   }
 }
+
+/**
+* Bloom pass shader material
+*/
+class FinalBloomShaderPass extends THREE.ShaderMaterial {
+  constructor(bloomComposer) {
+    let vertexShader = [
+      'varying vec2 vUv;',
+      'void main() {',
+        'vUv = uv;',
+        'gl_Position = projectionMatrix * modelViewMatrix * ' +
+                       'vec4(position, 1.0);',
+      '}'
+    ].join('\n');
+    let fragmentShader = [
+      'uniform sampler2D baseTexture;',
+      'uniform sampler2D bloomTexture;',
+      'varying vec2 vUv;',
+      'void main() {',
+        'gl_FragColor = (texture2D(baseTexture, vUv) + vec4(1.0) * ' +
+                        'texture2D(bloomTexture, vUv));',
+      '}'
+    ].join('\n');
+    super({
+      uniforms: {
+        baseTexture: {value: null},
+        bloomTexture: {value: bloomComposer.renderTarget2.texture}
+      },
+      vertexShader: vertexShader,
+      fragmentShader: fragmentShader,
+      defines: {}});
+    this.type = 'FinalBloomShaderPass';
+    this.needsSwap = true;
+  }
+};
+
+class FinalBloomPass extends ShaderPass {
+  constructor(params) {
+    let fbsp = new FinalBloomShaderPass(params);
+    super(fbsp, 'baseTexture');
+  }
+};
+
+const MARenderLayer = {
+  MAIN:			0,
+  BLOOM:		1
+};
 
 /**
 * Enough of a camera state to restore position.
@@ -249,6 +302,127 @@ class AlphaPointsMaterial extends THREE.ShaderMaterial {
 }
 
 /**
+* @class	MARenderBloom
+* @constructor
+* @brief	Creates a multi pass render to enable bloom rendering.
+*/
+class MARenderBloom {
+  constructor() {
+    this.layer = undefined;
+    this.bloomComposer  = undefined;
+    this.finalPass = undefined;
+    this.finalComposer = undefined;
+    this.size = undefined;
+    this.pixelRatio = undefined;
+    this.strength = 2;
+    this.radius = 0.2;
+    this.threshold = 0;
+  }
+
+
+  /**
+   * @class	MARenderBloom
+   * @function	init
+   * @brief	Sets up the multi pass render for bloom rendering.
+   * @param	scene		The scene to be rendered.
+   * @param	camera		The camera.
+   * *param	renderer	The renderer.
+   */
+  init(scene, camera, renderer) {
+    this.size = renderer.getSize(new THREE.Vector2());
+    this.pixelRatio = renderer.getPixelRatio();
+    let renderPass = new RenderPass(scene, camera);
+    let bloomPass = new UnrealBloomPass(this.size, this.strength, this.radius,
+        this.threshold);
+    this.layer = new THREE.Layers();
+    this.layer.set(MARenderLayer.BLOOM);
+    this.bloomComposer  = new EffectComposer(renderer);
+    this.bloomComposer.renderToScreen = false;
+    this.bloomComposer.addPass(renderPass);
+    this.bloomComposer.addPass(bloomPass);
+    let finalPass = new FinalBloomPass(this.bloomComposer);
+    this.finalComposer = new EffectComposer(renderer);
+    this.finalComposer.addPass(renderPass);
+    this.finalComposer.addPass(finalPass);
+  }
+
+  /**
+   * @class	MARenderBloom
+   * @function	update
+   * @brief	Updates the multi pass bloom rendering following a window
+   * 		size change.
+   * @param	renderer	The renderer.
+   */
+  update(renderer) {
+    const size = renderer.getSize(new THREE.Vector2());
+    const pixelRatio = renderer.getPixelRatio();
+    if((size.x != this.size.x) || (size.y  != this.size.y)) {
+      this.size = size;
+      this.bloomComposer.setSize(size.x, size.y);
+      this.finalComposer.setSize(size.x, size.y);
+    }
+    if(pixelRatio !== this.pixelRatio) {
+      this.pixelRatio = pixelRatio;
+      this.bloomComposer.setPixelRatio(pixelRatio);
+      this.finalComposer.setPixelRatio(pixelRatio);
+    }
+  }
+
+  /**
+   * @class	MARenderBloom
+   * @function	render
+   * @brief	Renders the scene using multi pass bloom rendering.
+   * 		size change.
+   * @param	scene		The scene to be rendered.
+   * @param	camera		The camera.
+   */
+  render(scene, camera) {
+    const objVisability = [];
+
+    scene.traverseVisible(function(obj) {
+      this._switchNonBloomedVisability(obj, objVisability, true);
+    }.bind(this));
+    this.bloomComposer.render(scene, camera);
+    scene.traverse(function(obj) {
+      this._switchNonBloomedVisability(obj, objVisability, false);
+    }.bind(this));
+    this.finalComposer.render(scene, camera);
+  }
+
+  /**
+   * @class	MARenderBloom
+   * @function	destroy
+   * @brief	Destroys the multi pass bloom rendering. Not implemented.
+   */
+  destroy() {
+    // Unimplemented
+  }
+
+  /**
+   * @class	MARenderBloom
+   * @function	_switchNonBloomedVisability
+   * @brief	Switches the visability of mesh objects to either hide
+   * 		or restore them.
+   * @param	obj		Scene object.
+   * @param 	visability	Table of saved object visability values.
+   * @param	hide		True to hide, false to restore.
+   */
+  _switchNonBloomedVisability(obj, visability, hide) {
+    if(hide) {
+      if((obj.isMesh || obj.isMARenderPath || obj.isPoints || obj.isSprite) &&
+         (this.layer.test(obj.layers) === false)) {
+        visability[obj.uuid] = obj.material.visible;
+        obj.material.visible = false;
+      }
+    } else {
+      if(typeof visability[obj.uuid] !== 'undefined') {
+        obj.material.visible = visability[obj.uuid];
+      }
+    }
+  }
+}
+
+/**
 * @class	MARenderer
 * @constructor
 * @brief 	Creates a new renderer.
@@ -292,6 +466,7 @@ class MARenderer {
     this.labelFont = new MARenderFont();
     this.pickTimestamp = 0;
     this.pickMaxPointerDelay = 300; // ms max delay between down/up for picking
+    this.bloom = undefined;
     THREE.ImageUtils.crossOrigin = ''; // To allow CORS textures
   }
 
@@ -312,7 +487,7 @@ class MARenderer {
     this.con.appendChild(this.renderer.domElement);
 
     this.scene.add(this.camera);
-    
+
     this.ambLight = new THREE.AmbientLight(0x777777);
     this.dirLight = new THREE.DirectionalLight(0x777777);
     this.dirLight.position.set(0, 0, 1);
@@ -323,6 +498,10 @@ class MARenderer {
     this.camera.add(this.dirLight);
 
     this.raycaster = new THREE.Raycaster();
+
+    if(this.bloom) {
+      this.bloom.init(scene, camera, renderer);
+    }
 
     this.win.addEventListener('mousemove', this._trackMouse.bind(this), false);
     this.win.addEventListener('keypress', this._keyPressed.bind(this), false);
@@ -363,6 +542,30 @@ class MARenderer {
       this.renderer.clippingPlanes = this.noClipPlanes;
     }
     this.render();
+  }
+
+  /**
+   * @class	MARenderer
+   * @function	setBloom
+   * @brief	Sets whether bloom can be used by the renderer.
+   * @param state	Bloom used if true or not used if false.
+   */
+  setBloom(state) {
+    if(state && (typeof this.bloom === 'undefined')) {
+      this._setupBloom(state);
+    } else if (!state && (typeof this.bloom !== 'undefined')) {
+      this._setupBloom(state);
+    }
+  }
+
+  /**
+   * @class	MARenderer
+   * @function	getBloom
+   * @return	True if bloom has been enabled for the renderer.
+   * @brief	Gets whether bloom can be used by the renderer.
+   */
+  getBloom() {
+    return(typeof this.bloom !== 'undefined');
   }
 
   /**
@@ -436,11 +639,13 @@ class MARenderer {
 		    case MARenderMode.POINT:
 		      let pnts = new THREE.Points(geom, mat);
 		      pnts.name = itm.name;
+		      this.setObjBloom(pnts, itm.bloom);
 		      this.scene.add(pnts);
 		      break;
 		    default:
 		      let mesh = new THREE.Mesh(geom, mat);
 		      mesh.name = itm.name;
+		      this.setObjBloom(mesh, itm.bloom);
 		      this.scene.add(mesh);
 		      break;
 		  }
@@ -475,6 +680,7 @@ class MARenderer {
 		   mat.map = tx;
 		   let pln = new THREE.Mesh(geom, mat);
 		   pln.name = itm.name;
+		   this.setObjBloom(pln, itm.bloom);
 		   this.scene.add(pln);
 		   this.makeLive();
 		 }.bind(this),
@@ -497,6 +703,7 @@ class MARenderer {
 	  }
 	  mrk.name = itm.name;
 	  mrk.position.set(itm.position.x, itm.position.y, itm.position.z);
+	  this.setObjBloom(mrk, itm.bloom);
           this.scene.add(mrk);
 	  this.makeLive();
 	  break;
@@ -506,6 +713,7 @@ class MARenderer {
 	  mat = this._makeMaterial(geom, itm);
 	  let path = new MARenderPath(geom, mat);
 	  path.name = itm.name;
+	  this.setObjBloom(path, itm.bloom);
 	  this.scene.add(path);
 	  this.makeLive();
 	  break;
@@ -521,6 +729,7 @@ class MARenderer {
 	  d.multiplyScalar(po + 1.0);
 	  d.add(shape.position);
 	  shape.lookAt(d);
+	  this.setObjBloom(shape, itm.bloom);
 	  this.scene.add(shape);
 	  this.makeLive();
 	  break;
@@ -709,6 +918,41 @@ class MARenderer {
   }
 
   /**
+   * @class	MARenderer
+   * @function	setObjBloom
+   * @brief	Sets the objects bloom state to on if state is true or off if
+   * 		state is false.
+   * @param	obj		Object to set bloom state on.
+   * @param	state		Boolean.
+   */
+  setObjBloom(obj, state) {
+    if(obj) {
+      if(state) {
+	obj.layers.enable(MARenderLayer.BLOOM);
+      } else {
+	obj.layers.disable(MARenderLayer.BLOOM);
+      }
+    }
+  }
+
+  /**
+   * @class	MARenderer
+   * @function	getObjBloom
+   * @return	Undefined if obj is invalid else true if bloom is on
+   * 		or false if bloom is off.
+   * @brief	Gets the objects bloom state.
+   * 		state is false.
+   * @param	obj		Object to get bloom state of.
+   */
+  getObjBloom(obj) {
+    let state = undefined;
+    if(obj) {
+      state = obj.layers.isEnabled(MARenderLayer.BLOOM);
+    }
+    return(state);
+  }
+
+  /**
    * @class     MARenderer
    * @function  setLineResolution
    * @brief     Sets the resolution for all line materials. This is required
@@ -859,6 +1103,9 @@ class MARenderer {
     if(this.cameraControls) {
       this.cameraControls.handleResize();
     }
+    if(this.bloom) {
+      this.bloom.update(this.renderer);
+    }
   }
 
   /**
@@ -978,8 +1225,12 @@ class MARenderer {
    * @brief	Renders the scene now.
    */
   render() {
-    this.renderer.clearDepth();
-    this.renderer.render(this.scene, this.camera);
+    if(this.bloom) {
+      this.bloom.render(this.scene, this.camera);
+    } else {
+      this.renderer.clearDepth();
+      this.renderer.render(this.scene, this.camera);
+    }
   }
 
   /**
@@ -1314,6 +1565,9 @@ class MARenderer {
                 (obj.material.text !== undefined)) {
         itm.text = obj.material.text;
       }
+      if(gProp['bloom']) {
+        itm.bloom  = gProp['bloom'];
+      }
       if(gProp['mode']) {
 	// Always set the mode/material type
 	let mode = this._checkRenderMode(gProp['mode']);
@@ -1447,6 +1701,13 @@ class MARenderer {
       default:
         break;
     }
+    if(typeof itm.bloom !== 'undefined') {
+      if(itm.bloom) {
+        obj.layers.enable(MARenderLayer.BLOOM);
+      } else {
+        obj.layers.disable(MARenderLayer.BLOOM);
+      }
+    }
   }
 
   /**
@@ -1500,6 +1761,7 @@ class MARenderer {
         case 'linewidth':
 	  itm[p] = Number(gProp[p]);
           break;
+	case 'bloom':
 	case 'visible':
         case 'transparent':
           itm[p] = Boolean(gProp[p]);
@@ -1711,6 +1973,23 @@ class MARenderer {
 	break;
     }
     return(mat);
+  }
+
+  /**
+   * @class	MARenderer
+   * @function	_setupBloom
+   * @brief	Sets up or removes bloom rendering.
+   * @param	state		Sets up if true, removes if false.
+   */
+  _setupBloom(state) {
+    if(state) {
+      this.bloom = new MARenderBloom()
+      if(this.scene && this.camera && this.renderer) {
+        this.bloom.init(this.scene, this.camera, this.renderer);
+      }
+    } else {
+      /* Currently there is no way to remove the multipass bloom rendering. */
+    }
   }
 
   /**

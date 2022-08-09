@@ -127,6 +127,7 @@ sections, paths, markers and labels.
 
   // Initialise the renderer
   ren.init();
+  ren.setBloom(true);
 
   // Don't compute a default view as models are loaded
   ren.setHomeOnLoad = false;
@@ -159,6 +160,7 @@ sections, paths, markers and labels.
                 color:       0x11aaff,
                 transparent: true,
                 opacity:     0.5,
+		bloom:       true,
                 mode:        MARenderMode.POINT});
   ren.addModel({name:        'sec',
                 texture:     'models/EMA53_TS17_section.png',
