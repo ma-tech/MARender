@@ -433,7 +433,7 @@ class MARenderBloom {
 class MARenderer {
   constructor(win, con) {
     this.type = 'MARenderer';
-    Object.defineProperty(this, 'version', {value: '2.0.2', writable: false});
+    Object.defineProperty(this, 'version', {value: '2.1.0', writable: false});
     this.win = win;
     this.con = con;
     this.scene = undefined;
